@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Go ${{ matrix.go-version }}
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: cost_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.25.x"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Verify formatting
+        run: test -z "$(gofmt -l .)"
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.13.2
+          args: --timeout=5m
+
+      - name: Run go vet
+        run: |
+          go vet ./...
+          (cd adapters/redis && go vet ./...)
+          (cd adapters/postgres && go vet ./...)
+          (cd adapters/kernel && go vet ./...)
+          (cd testkit && go vet ./...)
+
+      - name: Run unit and integration tests
+        env:
+          COST_POSTGRES_DSN: "postgres://postgres:password@localhost:5432/cost_test?sslmode=disable"
+        run: |
+          go test -v ./...
+          (cd adapters/redis && go test -v ./...)
+          (cd adapters/postgres && go test -v ./...)
+          (cd adapters/kernel && go test -v ./...)
+          (cd testkit && go test -v ./...)
+          (cd examples && go test -v ./... && go build ./...)
+
+      - name: Run tests with race detector
+        env:
+          COST_POSTGRES_DSN: "postgres://postgres:password@localhost:5432/cost_test?sslmode=disable"
+        run: |
+          go test -race ./...
+          (cd adapters/redis && go test -race ./...)
+          (cd adapters/postgres && go test -race ./...)
+          (cd adapters/kernel && go test -race ./...)
+
+      - name: Run benchmarks
+        run: go test ./... -run '^$' -bench=. -benchmem -count=1
