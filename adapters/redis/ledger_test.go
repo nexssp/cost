@@ -72,6 +72,9 @@ func TestLedgerExpirationReclamation(t *testing.T) {
 	client := redisclient.NewClient(&redisclient.Options{Addr: s.Addr()})
 	defer client.Close()
 
+	now := time.Now()
+	s.SetTime(now)
+
 	ledger := redisadapter.New(redisadapter.Config{
 		Client:         client,
 		Prefix:         "{test}:reclaim",
@@ -80,21 +83,24 @@ func TestLedgerExpirationReclamation(t *testing.T) {
 		ReservationTTL: time.Second,
 	})
 
-	// Reserve all budget
+	// 1. Rezerwujemy 100% budżetu
 	_, err := ledger.Reserve(context.Background(), 1_000_000)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Must fail
+	// 2. Budżet jest pełny - kolejna próba musi zostać odrzucona
 	if _, err := ledger.Reserve(context.Background(), 1); err == nil {
-		t.Fatal("expected rejection")
+		t.Fatal("expected rejection on exhausted budget")
 	}
 
-	// Advance time past TTL
+	// 3. Symulujemy upływ czasu w miniredis:
+	// SetTime aktualizuje czas zwracany przez komendę TIME w Lua,
+	// a FastForward przesuwa TTL kluczy.
+	s.SetTime(now.Add(2 * time.Second))
 	s.FastForward(2 * time.Second)
 
-	// Lazy reclamation should restore budget
+	// 4. Następna rezerwacja musi zrekultywować wygasły budżet i przejść pomyślnie
 	r2, err := ledger.Reserve(context.Background(), 500_000)
 	if err != nil {
 		t.Fatalf("expected reclamation, got error: %v", err)
@@ -119,8 +125,8 @@ func TestLedgerLazyReclamationBatching(t *testing.T) {
 		ReservationTTL: time.Second,
 	})
 
-	// Manually inject 250 expired reservations into Redis keys and ZSET
-	now := time.Now().Unix() - 10
+	// Wstrzykujemy 250 wygasłych rezerwacji z czasem 100 sekund w przeszłości
+	now := time.Now().Unix() - 100
 	pipe := client.Pipeline()
 	for i := 1; i <= 250; i++ {
 		id := fmt.Sprintf("exp-%d", i)
@@ -132,19 +138,20 @@ func TestLedgerLazyReclamationBatching(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Reserve will trigger reclamation of first batch (100 items)
+	// Rezerwacja powinna uruchomić partię czyszczenia ograniczoną do dokładnie 100 wpisów
 	_, err := ledger.Reserve(context.Background(), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Remaining items in ZSET must be 150 (250 - 100)
-	count, err := client.ZCard(context.Background(), prefix+":expiry").Result()
+	// Weryfikujemy ile WYGASŁYCH wpisów (score <= now) pozostało w sorted secie.
+	// Z 250 wygasłych usunięto dokładnie 100, więc musi pozostać dokładnie 150 wygasłych.
+	expiredRemaining, err := client.ZCount(context.Background(), prefix+":expiry", "-inf", fmt.Sprint(now)).Result()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if count != 150 {
-		t.Fatalf("expected 150 remaining expired items after batch limit, got %d", count)
+	if expiredRemaining != 150 {
+		t.Fatalf("expected exactly 150 expired items remaining after 100-batch reclamation, got %d", expiredRemaining)
 	}
 }
 
@@ -194,6 +201,9 @@ func TestLedgerExpiredCommitReturnsNotFound(t *testing.T) {
 	client := redisclient.NewClient(&redisclient.Options{Addr: s.Addr()})
 	defer client.Close()
 
+	now := time.Now()
+	s.SetTime(now)
+
 	ledger := redisadapter.New(redisadapter.Config{
 		Client:         client,
 		Prefix:         "{test}:notfound",
@@ -207,12 +217,14 @@ func TestLedgerExpiredCommitReturnsNotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Przesuwamy czas w Redis o 2 sekundy (rezerwacja wygasa)
+	s.SetTime(now.Add(2 * time.Second))
 	s.FastForward(2 * time.Second)
 
-	// Trigger lazy reclamation
+	// Inna operacja uruchamia leniwe czyszczenie i usuwa wygasłą rezerwację
 	_, _ = ledger.Reserve(context.Background(), 10)
 
-	// Committing already reclaimed reservation must return ErrReservationNotFound
+	// Commit na usuniętej, wygasłej rezerwacji MUSI zwrócić ErrReservationNotFound
 	if err := r.Commit(context.Background(), 100); !errors.Is(err, cost.ErrReservationNotFound) {
 		t.Fatalf("expected ErrReservationNotFound, got %v", err)
 	}

@@ -15,9 +15,12 @@ import (
 
 var reserveScript = redisclient.NewScript(`
 local used = tonumber(redis.call('GET', KEYS[1]) or '0')
-local now = tonumber(ARGV[5])
 
--- Bounded lazy reclamation: limit to 100 entries to protect Redis event loop
+-- Use Redis server clock as single source of truth
+local time_res = redis.call('TIME')
+local now = tonumber(time_res[1])
+
+-- Bounded lazy reclamation: limit to 100 entries to protect Redis single thread
 local expired = redis.call('ZRANGEBYSCORE', KEYS[3], '-inf', now, 'LIMIT', 0, 100)
 for _, id in ipairs(expired) do
     local key = KEYS[2] .. ':' .. id
@@ -51,9 +54,9 @@ return used
 
 var terminalScript = redisclient.NewScript(`
 local used = tonumber(redis.call('GET', KEYS[1]) or '0')
-local id = ARGV[1]
-local actual = tonumber(ARGV[2])
-local now = tonumber(ARGV[3])
+
+local time_res = redis.call('TIME')
+local now = tonumber(time_res[1])
 
 local expired = redis.call('ZRANGEBYSCORE', KEYS[3], '-inf', now, 'LIMIT', 0, 100)
 for _, exp_id in ipairs(expired) do
@@ -66,6 +69,8 @@ for _, exp_id in ipairs(expired) do
     redis.call('ZREM', KEYS[3], exp_id)
 end
 
+local id = ARGV[1]
+local actual = tonumber(ARGV[2])
 local key = KEYS[2] .. ':' .. id
 local reserved = tonumber(redis.call('GET', key) or '0')
 if reserved == 0 then
@@ -83,8 +88,9 @@ return new_used
 
 var releaseScript = redisclient.NewScript(`
 local used = tonumber(redis.call('GET', KEYS[1]) or '0')
-local id = ARGV[1]
-local now = tonumber(ARGV[2])
+
+local time_res = redis.call('TIME')
+local now = tonumber(time_res[1])
 
 local expired = redis.call('ZRANGEBYSCORE', KEYS[3], '-inf', now, 'LIMIT', 0, 100)
 for _, exp_id in ipairs(expired) do
@@ -97,6 +103,7 @@ for _, exp_id in ipairs(expired) do
     redis.call('ZREM', KEYS[3], exp_id)
 end
 
+local id = ARGV[1]
 local key = KEYS[2] .. ':' .. id
 local reserved = tonumber(redis.call('GET', key) or '0')
 if reserved == 0 then
@@ -160,12 +167,15 @@ func (l *Ledger) Reserve(ctx context.Context, estimate int64) (cost.Reservation,
 	if ctx == nil {
 		return nil, cost.ErrNilContext
 	}
+
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
 	if l.client == nil {
 		return nil, fmt.Errorf("redis: nil client")
 	}
+
 	if estimate < 0 || estimate > math.MaxInt64/2 {
 		return nil, &cost.ValidationError{
 			Field: "estimate_micros",
@@ -184,13 +194,12 @@ func (l *Ledger) Reserve(ctx context.Context, estimate int64) (cost.Reservation,
 		ttlSeconds = 1
 	}
 
-	now := time.Now().Unix()
-
-	err := reserveScript.Run(ctx, l.client, l.keys, l.limit, estimate, id, ttlSeconds, now).Err()
+	err := reserveScript.Run(ctx, l.client, l.keys, l.limit, estimate, id, ttlSeconds).Err()
 	if err != nil {
 		if redisclient.HasErrorPrefix(err, "BUDGET_EXCEEDED") {
 			return nil, fmt.Errorf("%w: %v", cost.ErrBudgetExceeded, err)
 		}
+
 		return nil, fmt.Errorf("redis: reserve: %w", err)
 	}
 
@@ -204,9 +213,11 @@ func (l *Ledger) Record(ctx context.Context, event cost.Event) error {
 	if ctx == nil {
 		return cost.ErrNilContext
 	}
+
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	if event.CostMicros <= 0 {
 		return &cost.ValidationError{
 			Field: "cost_micros",
@@ -217,11 +228,13 @@ func (l *Ledger) Record(ctx context.Context, event cost.Event) error {
 	if event.Currency == (cost.Currency{}) {
 		event.Currency = l.currency
 	}
+
 	if event.Currency != l.currency {
 		return fmt.Errorf("redis: currency mismatch")
 	}
 
 	key := fmt.Sprintf("%s:spent:%s:%s", l.prefix, event.Domain, event.Operation)
+
 	return l.client.IncrBy(ctx, key, event.CostMicros).Err()
 }
 
@@ -236,6 +249,7 @@ func (r *reservation) Commit(ctx context.Context, actual int64) error {
 	if ctx == nil {
 		return cost.ErrNilContext
 	}
+
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -251,15 +265,16 @@ func (r *reservation) Commit(ctx context.Context, actual int64) error {
 		actual = 0
 	}
 
-	now := time.Now().Unix()
-	if err := terminalScript.Run(ctx, r.ledger.client, r.ledger.keys, r.id, actual, now).Err(); err != nil {
+	if err := terminalScript.Run(ctx, r.ledger.client, r.ledger.keys, r.id, actual).Err(); err != nil {
 		if redisclient.HasErrorPrefix(err, "RESERVATION_NOT_FOUND") {
 			return fmt.Errorf("%w: %v", cost.ErrReservationNotFound, err)
 		}
+
 		return fmt.Errorf("redis: commit: %w", err)
 	}
 
 	r.done = true
+
 	return nil
 }
 
@@ -267,6 +282,7 @@ func (r *reservation) Release(ctx context.Context) error {
 	if ctx == nil {
 		return cost.ErrNilContext
 	}
+
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -278,14 +294,15 @@ func (r *reservation) Release(ctx context.Context) error {
 		return nil
 	}
 
-	now := time.Now().Unix()
-	if err := releaseScript.Run(ctx, r.ledger.client, r.ledger.keys, r.id, now).Err(); err != nil {
+	if err := releaseScript.Run(ctx, r.ledger.client, r.ledger.keys, r.id).Err(); err != nil {
 		if redisclient.HasErrorPrefix(err, "RESERVATION_NOT_FOUND") {
 			return fmt.Errorf("%w: %v", cost.ErrReservationNotFound, err)
 		}
+
 		return fmt.Errorf("redis: release: %w", err)
 	}
 
 	r.done = true
+
 	return nil
 }

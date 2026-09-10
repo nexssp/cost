@@ -68,22 +68,47 @@ func TestGuardActionFailureReleasesReservation(t *testing.T) {
 
 func TestGuardActionPanicReleasesReservation(t *testing.T) {
 	ledger := cost.NewLedger(100_000, cost.USD)
+
 	act := action.New("orders.crash", func(ctx context.Context, in string) (string, error) {
 		panic("fatal unhandled condition")
 	}).
 		AnyHook(kernelcost.GuardAction(ledger, 50_000)).
 		Build()
 
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic")
-		}
-		if ledger.UsedMicros() != 0 || ledger.SpentMicros() != 0 {
-			t.Fatalf("expected reservation release on panic, used=%d spent=%d", ledger.UsedMicros(), ledger.SpentMicros())
-		}
-	}()
+	// Kernel action wyłapuje panikę przez wewnętrzny recover(),
+	// uruchamia zarejestrowany hook OnPanic (który zwalnia rezerwację) i zwraca błąd z akcji.
+	_, err := act.Do(context.Background(), "input")
+	if err == nil {
+		t.Fatal("expected error from panicked action")
+	}
 
-	_, _ = act.Do(context.Background(), "input")
+	// Gwarancja biznesowa: rezerwacja MUSI zostać natychmiast zwolniona
+	if ledger.UsedMicros() != 0 || ledger.SpentMicros() != 0 {
+		t.Fatalf("expected reservation release on panic, used=%d spent=%d", ledger.UsedMicros(), ledger.SpentMicros())
+	}
+}
+
+func TestGuardActionDirectHookPanicSafety(t *testing.T) {
+	// Testujemy hook OnPanic bezpośrednio, weryfikując odporność samego hooka
+	// bez względu na to, co nadrzędny framework robi z paniką.
+	ledger := cost.NewLedger(100_000, cost.USD)
+	hook := kernelcost.GuardAction(ledger, 40_000)
+
+	ctx, err := hook.Before(context.Background(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ledger.UsedMicros() != 40_000 {
+		t.Fatalf("expected 40000 reserved, got %d", ledger.UsedMicros())
+	}
+
+	// Bezpośrednie wywołanie OnPanic symulujące obsługę błędu krytycznego
+	hook.OnPanic(ctx, nil, "panic payload", nil)
+
+	if ledger.UsedMicros() != 0 {
+		t.Fatalf("expected 0 used after OnPanic, got %d", ledger.UsedMicros())
+	}
 }
 
 func TestGuardActionCancelReleasesReservation(t *testing.T) {
@@ -91,7 +116,7 @@ func TestGuardActionCancelReleasesReservation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	act := action.New("orders.cancel", func(ctx context.Context, in string) (string, error) {
-		cancel() // Cancel context mid-flight
+		cancel() // Anulujemy kontekst w trakcie działania akcji
 		return "", ctx.Err()
 	}).
 		AnyHook(kernelcost.GuardAction(ledger, 50_000)).
@@ -113,7 +138,7 @@ func TestGuardActionNilMetaSafety(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Invoke After with nil meta; must not panic
+	// Wywołanie After z meta = nil nie może rzucić paniki (ochrona przed nil pointer)
 	hook.After(ctx, nil, reportedResult{cost: 10_000}, nil, nil)
 
 	if ledger.UsedMicros() != 10_000 {
@@ -125,6 +150,6 @@ func TestGuardActionNilMetaSafety(t *testing.T) {
 		t.Fatalf("expected 1 entry, got %d", len(entries))
 	}
 	if entries[0].Domain != "action" || entries[0].Operation != "action" {
-		t.Fatalf("expected default domain/op 'action', got %s.%s", entries[0].Domain, entries[0].Operation)
+		t.Fatalf("expected fallback domain/op 'action', got %s.%s", entries[0].Domain, entries[0].Operation)
 	}
 }

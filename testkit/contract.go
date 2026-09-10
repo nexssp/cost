@@ -21,17 +21,20 @@ func RunContract(t *testing.T, newBackend func(t *testing.T) cost.Reserver) {
 		t.Fatalf("unexpected reserve error: %v", err)
 	}
 
-	if err := reservation.Commit(ctx, 40); err != nil {
+	err = reservation.Commit(ctx, 40)
+	if err != nil {
 		t.Fatalf("unexpected commit error: %v", err)
 	}
 
 	// Idempotent terminal call
-	if err := reservation.Commit(ctx, 90); err != nil {
+	err = reservation.Commit(ctx, 90)
+	if err != nil {
 		t.Fatalf("expected commit idempotency, got: %v", err)
 	}
 
 	// Budget is now 40 / 100 used; 61 should fail
-	if _, err := backend.Reserve(ctx, 61); err == nil {
+	_, err = backend.Reserve(ctx, 61)
+	if err == nil {
 		t.Fatal("expected budget rejection when limit exceeded")
 	}
 
@@ -41,12 +44,14 @@ func RunContract(t *testing.T, newBackend func(t *testing.T) cost.Reserver) {
 		t.Fatalf("unexpected reserve error: %v", err)
 	}
 
-	if err := toRelease.Release(ctx); err != nil {
+	err = toRelease.Release(ctx)
+	if err != nil {
 		t.Fatalf("unexpected release error: %v", err)
 	}
 
 	// Idempotent terminal call
-	if err := toRelease.Release(ctx); err != nil {
+	err = toRelease.Release(ctx)
+	if err != nil {
 		t.Fatalf("expected release idempotency, got: %v", err)
 	}
 }

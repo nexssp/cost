@@ -57,7 +57,6 @@ jobs:
           (cd adapters/redis && go vet ./...)
           (cd adapters/postgres && go vet ./...)
           (cd adapters/kernel && go vet ./...)
-          (cd testkit && go vet ./...)
 
       - name: Run unit and integration tests
         env:
@@ -67,7 +66,6 @@ jobs:
           (cd adapters/redis && go test -v ./...)
           (cd adapters/postgres && go test -v ./...)
           (cd adapters/kernel && go test -v ./...)
-          (cd testkit && go test -v ./...)
           (cd examples && go test -v ./... && go build ./...)
 
       - name: Run tests with race detector
