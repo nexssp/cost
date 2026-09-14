@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/alicebob/miniredis/v2 v2.39.0
-	github.com/nexssp/cost v0.1.1
+	github.com/nexssp/cost v0.1.3
 	github.com/redis/go-redis/v9 v9.22.0
 )
 
