@@ -1,7 +1,7 @@
 github.com/nexssp/cost v0.1.3 h1:DVEN+auZHwgq/WkVFGqn6DGIGWQL7gXqtMQJGmF2ITs=
 github.com/nexssp/cost v0.1.3/go.mod h1:+L8APaW0EHx90voBDIJm3vUtDm/ntllyAa4sFpmTS2Y=
-github.com/nexssp/kernel v0.10.0 h1:WfwK0BtpysM1gntDT6/iFjlVdQzApiW9xBmvQ/Kset8=
-github.com/nexssp/kernel v0.10.0/go.mod h1:gLyh+67KWqJsj0YTMijJyfjh7NGN58pqjRmEdFd1VO0=
+github.com/nexssp/kernel v0.11.2 h1:uTT8dUAhtc15bkA53Ek+ZhfL/uGJ9BH1rw78QwW+LbE=
+github.com/nexssp/kernel v0.11.2/go.mod h1:gLyh+67KWqJsj0YTMijJyfjh7NGN58pqjRmEdFd1VO0=
 golang.org/x/sync v0.23.0 h1:KameEIfc1IkluZyXWLn39Wd4tURc6GbCiISGiZm2bQk=
 golang.org/x/sync v0.23.0/go.mod h1:sUUOizhqBxiL6pEWpqNLUiaJn1ShEbZ6BBqskPbjZm0=
 golang.org/x/time v0.16.0 h1:vMb6ptszcQMkcwiRTAuNNU50gom6++Q/6gY2hDM6VDE=
