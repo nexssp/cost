@@ -34,22 +34,25 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version-file: go.mod
           cache: true
 
-      - name: Verify formatting
-        run: test -z "$(gofmt -l .)"
-
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v8
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v9.3.0
         with:
           version: v2.13.2
-          args: --timeout=5m
+          install-only: true
+
+      - name: Verify formatting
+        run: golangci-lint fmt --diff
+
+      - name: Run golangci-lint
+        run: golangci-lint run --timeout=5m
 
       - name: Run go vet
         run: |
