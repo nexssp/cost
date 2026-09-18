@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/nexssp/cost v0.1.3
+	github.com/nexssp/cost v0.2.0
 )
 
 require (

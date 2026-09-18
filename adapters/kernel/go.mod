@@ -3,7 +3,7 @@ module github.com/nexssp/cost/adapters/kernel
 go 1.26.0
 
 require (
-	github.com/nexssp/cost v0.1.5
+	github.com/nexssp/cost v0.2.0
 	github.com/nexssp/kernel v0.14.0
 )
 
