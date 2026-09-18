@@ -272,19 +272,15 @@ func TestLocalConcurrencyNeverExceedsLimit(t *testing.T) {
 
 	reservations := make([]cost.Reservation, 0, 100)
 
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
+	for range 100 {
+		wg.Go(func() {
 			r, err := ledger.Reserve(context.Background(), 1_000)
 			if err == nil {
 				mu.Lock()
 				reservations = append(reservations, r)
 				mu.Unlock()
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

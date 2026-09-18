@@ -25,7 +25,7 @@ func (c Currency) String() string {
 
 func (c Currency) MarshalText() ([]byte, error) {
 	if c == (Currency{}) {
-		return nil, fmt.Errorf("cost: empty currency")
+		return nil, errors.New("cost: empty currency")
 	}
 
 	return c[:], nil
@@ -42,7 +42,7 @@ func (c *Currency) UnmarshalText(b []byte) error {
 
 	for _, ch := range b {
 		if ch < 'A' || ch > 'Z' {
-			return fmt.Errorf("cost: currency must contain uppercase ASCII letters")
+			return errors.New("cost: currency must contain uppercase ASCII letters")
 		}
 	}
 

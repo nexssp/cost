@@ -9,10 +9,10 @@ type Event struct {
 	Operation  string    `json:"operation"`
 	CostMicros int64     `json:"cost_micros"`
 	Currency   Currency  `json:"currency"`
-	Timestamp  time.Time `json:"timestamp,omitempty"`
+	Timestamp  time.Time `json:"timestamp,omitzero"`
 }
 
-// CostReporter lets an action result report actual usage.
-type CostReporter interface {
+// Reporter lets an action result report actual usage.
+type Reporter interface {
 	CostMicros() int64
 }

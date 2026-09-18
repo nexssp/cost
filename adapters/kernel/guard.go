@@ -42,7 +42,7 @@ func GuardAction(ledger cost.Reserver, estimateMicros int64) action.AnyHook {
 			}
 
 			actual := estimateMicros
-			if reporter, ok := result.(cost.CostReporter); ok {
+			if reporter, ok := result.(cost.Reporter); ok {
 				actual = reporter.CostMicros()
 				if actual < 0 {
 					actual = 0

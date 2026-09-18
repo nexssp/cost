@@ -133,10 +133,7 @@ func (l *Ledger) Entries() []Event {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
-	count := l.head
-	if count > auditRingCapacity {
-		count = auditRingCapacity
-	}
+	count := min(l.head, auditRingCapacity)
 
 	n := int(count)
 	out := make([]Event, n)
