@@ -138,7 +138,6 @@ func TestGuardActionNilMetaSafety(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Wywołanie After z meta = nil nie może rzucić paniki (ochrona przed nil pointer)
 	hook.After(ctx, nil, reportedResult{cost: 10_000}, nil, nil)
 
 	if ledger.UsedMicros() != 10_000 {
