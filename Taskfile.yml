@@ -1,0 +1,41 @@
+version: '3'
+
+vars:
+  MODULE: .
+  MODULES:
+    - .
+    - adapters/kernel
+    - adapters/postgres
+    - adapters/redis
+    - examples
+
+tasks:
+  default:
+    desc: Show available tasks; use `task check-all` to run all module checks
+    cmds:
+      - task --list
+
+  check:
+    desc: Check one Go module (e.g. task check -- adapters/redis)
+    vars:
+      TARGET_MODULE: '{{default .MODULE .CLI_ARGS}}'
+    dir: '{{.TARGET_MODULE}}'
+    cmds:
+      - cmd: 'echo "Checking Go module: {{.TARGET_MODULE}}"'
+      - go mod tidy -diff
+      - go test -mod=readonly ./...
+      - go build -mod=readonly ./...
+      - go vet -mod=readonly ./...
+      - go test -race -mod=readonly ./...
+      - cmd: golangci-lint fmt --diff
+        if: '{{eq .TARGET_MODULE "."}}'
+      - cmd: golangci-lint run --timeout=5m
+        if: '{{eq .TARGET_MODULE "."}}'
+
+  check-all:
+    desc: Run check sequentially for all five Go modules
+    cmds:
+      - for: {var: MODULES}
+        task: check
+        vars:
+          MODULE: '{{.ITEM}}'

@@ -42,6 +42,15 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Verify Go module files are tidy
+        run: |
+          set -euo pipefail
+          for module in . adapters/kernel adapters/postgres adapters/redis examples; do
+            echo "::group::go mod tidy -diff ($module)"
+            (cd "$module" && go mod tidy -diff)
+            echo "::endgroup::"
+          done
+
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v9.3.0
         with:
