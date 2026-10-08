@@ -40,3 +40,4 @@ go.work.sum
 data/
 *.db
 *.sqlite
+.task

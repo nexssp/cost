@@ -1,0 +1,9 @@
+@description "Read the ledger snapshot after a reservation"
+@require github.com/nexssp/cost/nexssflow { budget: "1000000", currency: "USD" }
+
+@assert: result.limit_micros == 1000000
+@assert: result.used_micros == 0
+@assert: result.spent_micros == 0
+@assert: result.currency == "USD"
+
+cost.snapshot

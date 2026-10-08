@@ -1,0 +1,30 @@
+@description "Three pipelines, per-pipeline cost buckets, aggregate report"
+@require github.com/nexssp/cost/nexssflow { budget: "5000000", currency: "USD" }
+
+@pipeline cheap_scan
+  runtime.noop
+@end
+
+@pipeline medium_fetch
+  runtime.noop -> runtime.noop -> runtime.noop
+@end
+
+@pipeline expensive_inference
+  runtime.noop -> runtime.noop
+@end
+
+@assert: result.spent_micros == 570000
+@assert: result.used_micros == 570000
+@assert: len(result.buckets) == 3
+@assert: result.buckets[0].operation == "cheap_scan"
+@assert: result.buckets[0].spent_micros == 1000
+@assert: result.buckets[1].operation == "medium_fetch"
+@assert: result.buckets[1].spent_micros == 69000
+@assert: result.buckets[2].operation == "expensive_inference"
+@assert: result.buckets[2].spent_micros == 500000
+
+{}
+-> pipeline.cheap_scan:cost_estimate=1000
+-> pipeline.medium_fetch:cost_estimate=69000
+-> pipeline.expensive_inference:cost_estimate=500000
+-> cost.report

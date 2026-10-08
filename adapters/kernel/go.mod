@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/nexssp/cost v0.2.0
-	github.com/nexssp/kernel v0.26.1
+	github.com/nexssp/kernel v0.27.4
 )
 
 require (
