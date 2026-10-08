@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"sync"
 	"time"
@@ -83,7 +84,7 @@ func (l *Ledger) EnsureSchema(ctx context.Context) error {
 		return cost.ErrNilContext
 	}
 	if l.db == nil {
-		return fmt.Errorf("postgres: nil database")
+		return errors.New("postgres: nil database")
 	}
 
 	if _, err := l.db.ExecContext(ctx, Schema); err != nil {
@@ -94,7 +95,7 @@ func (l *Ledger) EnsureSchema(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("postgres: begin schema upsert: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollback(tx)
 
 	var existingCurrency string
 	err = tx.QueryRowContext(ctx, `SELECT currency FROM cost_budgets WHERE scope = $1 FOR UPDATE`, l.scope).Scan(&existingCurrency)
@@ -127,7 +128,7 @@ func (l *Ledger) Reserve(ctx context.Context, estimate int64) (cost.Reservation,
 		return nil, err
 	}
 	if l.db == nil {
-		return nil, fmt.Errorf("postgres: nil database")
+		return nil, errors.New("postgres: nil database")
 	}
 	if estimate < 0 || estimate > math.MaxInt64/2 {
 		return nil, &cost.ValidationError{
@@ -145,61 +146,22 @@ func (l *Ledger) Reserve(ctx context.Context, estimate int64) (cost.Reservation,
 	if err != nil {
 		return nil, fmt.Errorf("postgres: begin: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollback(tx)
 
-	var used, limit int64
-	var currency string
-	row := tx.QueryRowContext(ctx, `
-		SELECT used_micros, limit_micros, currency
-		FROM cost_budgets
-		WHERE scope = $1
-		FOR UPDATE
-	`, l.scope)
-
-	if err = row.Scan(&used, &limit, &currency); err != nil {
-		return nil, fmt.Errorf("postgres: load budget: %w", err)
-	}
-
-	if currency != l.currency.String() {
-		return nil, fmt.Errorf("postgres: currency mismatch: database=%s ledger=%s", currency, l.currency)
-	}
-
-	// Reclaim expired reservations
-	var reclaimed int64
-	reclaimQuery := `
-		WITH expired AS (
-			DELETE FROM cost_reservations
-			WHERE scope = $1 AND expires_at <= CURRENT_TIMESTAMP
-			RETURNING amount_micros
-		)
-		SELECT COALESCE(SUM(amount_micros), 0) FROM expired
-	`
-	if err = tx.QueryRowContext(ctx, reclaimQuery, l.scope).Scan(&reclaimed); err != nil {
-		return nil, fmt.Errorf("postgres: reclaim: %w", err)
-	}
-
-	if reclaimed > 0 {
-		used -= reclaimed
-		_, err = tx.ExecContext(ctx, `
-			UPDATE cost_budgets
-			SET used_micros = $1, updated_at = CURRENT_TIMESTAMP
-			WHERE scope = $2
-		`, used, l.scope)
-		if err != nil {
-			return nil, fmt.Errorf("postgres: update reclaimed budget: %w", err)
-		}
+	used, limit, err := l.loadBudgetAndReclaim(ctx, tx)
+	if err != nil {
+		return nil, err
 	}
 
 	if limit >= 0 && used > limit-estimate {
 		// Commit the reclaimed budget so expired leases remain freed
-		_ = tx.Commit()
+		if commitErr := tx.Commit(); commitErr != nil {
+			return nil, fmt.Errorf("postgres: commit reclaimed budget: %w", commitErr)
+		}
 		return nil, fmt.Errorf("%w: used=%d estimate=%d limit=%d", cost.ErrBudgetExceeded, used, estimate, limit)
 	}
 
-	seconds := int64(l.ttl / time.Second)
-	if seconds < 1 {
-		seconds = 1
-	}
+	seconds := max(int64(l.ttl/time.Second), 1)
 
 	insertReservation := `
 		INSERT INTO cost_reservations(id, scope, amount_micros, expires_at)
@@ -236,7 +198,7 @@ func (l *Ledger) Record(ctx context.Context, event cost.Event) error {
 		return err
 	}
 	if l.db == nil {
-		return fmt.Errorf("postgres: nil database")
+		return errors.New("postgres: nil database")
 	}
 	if event.CostMicros <= 0 {
 		return &cost.ValidationError{
@@ -249,7 +211,7 @@ func (l *Ledger) Record(ctx context.Context, event cost.Event) error {
 		event.Currency = l.currency
 	}
 	if event.Currency != l.currency {
-		return fmt.Errorf("postgres: currency mismatch")
+		return errors.New("postgres: currency mismatch")
 	}
 
 	insertEntry := `
@@ -291,7 +253,7 @@ func (r *reservation) Commit(ctx context.Context, actual int64) error {
 	if err != nil {
 		return fmt.Errorf("postgres: begin commit: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollback(tx)
 
 	var reserved int64
 	deleteReservation := `DELETE FROM cost_reservations WHERE id = $1 RETURNING amount_micros`
@@ -338,7 +300,7 @@ func (r *reservation) Release(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("postgres: begin release: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollback(tx)
 
 	var reserved int64
 	deleteReservation := `DELETE FROM cost_reservations WHERE id = $1 RETURNING amount_micros`
@@ -372,4 +334,50 @@ func newID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b[:]), nil
+}
+
+func (l *Ledger) loadBudgetAndReclaim(ctx context.Context, tx *sql.Tx) (used, limit int64, err error) {
+	var currency string
+	row := tx.QueryRowContext(ctx, `
+		SELECT used_micros, limit_micros, currency
+		FROM cost_budgets
+		WHERE scope = $1
+		FOR UPDATE
+	`, l.scope)
+	if scanErr := row.Scan(&used, &limit, &currency); scanErr != nil {
+		return 0, 0, fmt.Errorf("postgres: load budget: %w", scanErr)
+	}
+	if currency != l.currency.String() {
+		return 0, 0, fmt.Errorf("postgres: currency mismatch: database=%s ledger=%s", currency, l.currency)
+	}
+
+	const reclaimQuery = `
+		WITH expired AS (
+			DELETE FROM cost_reservations
+			WHERE scope = $1 AND expires_at <= CURRENT_TIMESTAMP
+			RETURNING amount_micros
+		)
+		SELECT COALESCE(SUM(amount_micros), 0) FROM expired
+	`
+	var reclaimed int64
+	if err := tx.QueryRowContext(ctx, reclaimQuery, l.scope).Scan(&reclaimed); err != nil {
+		return 0, 0, fmt.Errorf("postgres: reclaim: %w", err)
+	}
+	if reclaimed > 0 {
+		used -= reclaimed
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE cost_budgets
+			SET used_micros = $1, updated_at = CURRENT_TIMESTAMP
+			WHERE scope = $2
+		`, used, l.scope); err != nil {
+			return 0, 0, fmt.Errorf("postgres: update reclaimed budget: %w", err)
+		}
+	}
+	return used, limit, nil
+}
+
+func rollback(tx *sql.Tx) {
+	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		slog.Error("failed to roll back PostgreSQL cost transaction", "error", err)
+	}
 }

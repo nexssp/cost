@@ -25,7 +25,7 @@ type Report struct {
 }
 
 func reportAction(ledger *cost.Ledger) action.AnyAction {
-	return action.New(ID+".report", func(_ context.Context, _ struct{}) (Report, error) {
+	return action.New(ID+".report", func(_ context.Context, _ any) (Report, error) {
 		entries := ledger.Entries()
 
 		type bucketKey struct{ domain, operation string }

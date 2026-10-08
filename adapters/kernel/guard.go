@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/nexssp/cost"
@@ -37,28 +38,37 @@ func GuardAction(ledger cost.Reserver, estimateMicros int64) action.AnyHook {
 			}
 
 			if actionErr != nil {
-				_ = finishContext(reservation, false, 0)
+				if err := finishContext(ctx, reservation, false, 0); err != nil {
+					slog.Error("failed to release cost reservation after action error", "error", err)
+				}
 				return
 			}
 
 			actual := estimateMicros
 			if reporter, ok := result.(cost.Reporter); ok {
-				actual = reporter.CostMicros()
-				if actual < 0 {
-					actual = 0
-				}
+				actual = max(reporter.CostMicros(), 0)
 			}
 
-			if err := finishContext(reservation, true, actual); err == nil && actual > 0 {
-				metaName := ""
-				if meta != nil {
-					metaName = meta.Name
-				}
-				_ = ledger.Record(context.Background(), cost.Event{
-					Domain:     domain(metaName),
-					Operation:  operation(metaName),
-					CostMicros: actual,
-				})
+			if err := finishContext(ctx, reservation, true, actual); err != nil {
+				slog.Error("failed to commit cost reservation", "error", err)
+				return
+			}
+			if actual <= 0 {
+				return
+			}
+
+			metaName := ""
+			if meta != nil {
+				metaName = meta.Name
+			}
+			recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), accountingTimeout)
+			defer cancel()
+			if err := ledger.Record(recordCtx, cost.Event{
+				Domain:     domain(metaName),
+				Operation:  operation(metaName),
+				CostMicros: actual,
+			}); err != nil {
+				slog.Error("failed to record cost event", "error", err)
 			}
 		},
 
@@ -72,19 +82,23 @@ func GuardAction(ledger cost.Reserver, estimateMicros int64) action.AnyHook {
 	}
 }
 
-func finishContext(reservation cost.Reservation, commit bool, actual int64) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+const accountingTimeout = 5 * time.Second
+
+func finishContext(ctx context.Context, reservation cost.Reservation, commit bool, actual int64) error {
+	accountingCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), accountingTimeout)
 	defer cancel()
 
 	if commit {
-		return reservation.Commit(ctx, actual)
+		return reservation.Commit(accountingCtx, actual)
 	}
-	return reservation.Release(ctx)
+	return reservation.Release(accountingCtx)
 }
 
 func release(ctx context.Context) {
 	if reservation, ok := ctx.Value(reservationKey{}).(cost.Reservation); ok {
-		_ = finishContext(reservation, false, 0)
+		if err := finishContext(ctx, reservation, false, 0); err != nil {
+			slog.Error("failed to release cost reservation", "error", err)
+		}
 	}
 }
 

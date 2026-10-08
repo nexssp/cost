@@ -20,7 +20,7 @@ func (r reportedResult) CostMicros() int64 {
 
 func TestGuardActionSuccessWithReporter(t *testing.T) {
 	ledger := cost.NewLedger(100_000, cost.USD)
-	act := action.New("orders.checkout", func(ctx context.Context, in string) (reportedResult, error) {
+	act := action.New("orders.checkout", func(_ context.Context, _ string) (reportedResult, error) {
 		return reportedResult{cost: 30_000}, nil
 	}).
 		AnyHook(kernelcost.GuardAction(ledger, 50_000)).
@@ -50,7 +50,7 @@ func TestGuardActionSuccessWithReporter(t *testing.T) {
 
 func TestGuardActionFailureReleasesReservation(t *testing.T) {
 	ledger := cost.NewLedger(100_000, cost.USD)
-	act := action.New("orders.fail", func(ctx context.Context, in string) (string, error) {
+	act := action.New("orders.fail", func(_ context.Context, _ string) (string, error) {
 		return "", errors.New("database down")
 	}).
 		AnyHook(kernelcost.GuardAction(ledger, 50_000)).
@@ -69,7 +69,7 @@ func TestGuardActionFailureReleasesReservation(t *testing.T) {
 func TestGuardActionPanicReleasesReservation(t *testing.T) {
 	ledger := cost.NewLedger(100_000, cost.USD)
 
-	act := action.New("orders.crash", func(ctx context.Context, in string) (string, error) {
+	act := action.New("orders.crash", func(_ context.Context, _ string) (string, error) {
 		panic("fatal unhandled condition")
 	}).
 		AnyHook(kernelcost.GuardAction(ledger, 50_000)).
@@ -115,7 +115,7 @@ func TestGuardActionCancelReleasesReservation(t *testing.T) {
 	ledger := cost.NewLedger(100_000, cost.USD)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	act := action.New("orders.cancel", func(ctx context.Context, in string) (string, error) {
+	act := action.New("orders.cancel", func(ctx context.Context, _ string) (string, error) {
 		cancel() // Anulujemy kontekst w trakcie działania akcji
 		return "", ctx.Err()
 	}).

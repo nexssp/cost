@@ -1,5 +1,5 @@
 @description "Budget reservation and automatic commit on success"
-@require github.com/nexssp/cost/nexssflow { budget: "1000000", currency: "USD" }
+@require github.com/nexssp/cost { budget: "1000000", currency: "USD" }
 
 @assert: result.value == "done"
 

@@ -24,13 +24,13 @@ func main() {
 	defer db.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	if err := db.PingContext(ctx); err != nil {
-		panic(fmt.Errorf("postgres is unavailable: %w", err))
+	if pingErr := db.PingContext(ctx); pingErr != nil {
+		panic(fmt.Errorf("postgres is unavailable: %w", pingErr))
 	}
 	ledger := postgresadapter.New(postgresadapter.Config{DB: db, Scope: "checkout", LimitMicros: int64(cost.ToMicro(10)), Currency: cost.USD})
 
-	if err := ledger.EnsureSchema(ctx); err != nil {
-		panic(err)
+	if schemaErr := ledger.EnsureSchema(ctx); schemaErr != nil {
+		panic(schemaErr)
 	}
 
 	reservation, err := ledger.Reserve(ctx, int64(cost.ToMicro(0.25)))

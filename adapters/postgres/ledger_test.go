@@ -80,8 +80,8 @@ func TestLedgerIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := reservation.Commit(ctx, 250_000); err != nil {
-		t.Fatal(err)
+	if commitErr := reservation.Commit(ctx, 250_000); commitErr != nil {
+		t.Fatal(commitErr)
 	}
 
 	second, err := ledger.Reserve(ctx, 500_000)
@@ -231,17 +231,15 @@ func TestLedgerConcurrentLocking(t *testing.T) {
 	var mu sync.Mutex
 	reservations := make([]cost.Reservation, 0, 50)
 
-	for i := 0; i < 50; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 50 {
+		wg.Go(func() {
 			r, err := ledger.Reserve(context.Background(), 500)
 			if err == nil {
 				mu.Lock()
 				reservations = append(reservations, r)
 				mu.Unlock()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 

@@ -16,7 +16,7 @@ tasks:
       - task --list
 
   check:
-    desc: Check one Go module (e.g. task check -- adapters/redis)
+    desc: Check one Go module, including formatting and golangci-lint (e.g. task check -- adapters/redis)
     vars:
       TARGET_MODULE: '{{default .MODULE .CLI_ARGS}}'
     dir: '{{.TARGET_MODULE}}'
@@ -27,10 +27,8 @@ tasks:
       - go build -mod=readonly ./...
       - go vet -mod=readonly ./...
       - go test -race -mod=readonly ./...
-      - cmd: golangci-lint fmt --diff
-        if: '{{eq .TARGET_MODULE "."}}'
-      - cmd: golangci-lint run --timeout=5m
-        if: '{{eq .TARGET_MODULE "."}}'
+      - golangci-lint fmt --diff
+      - golangci-lint run --timeout=5m ./...
 
   check-all:
     desc: Run check sequentially for all five Go modules

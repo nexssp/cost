@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -173,7 +174,7 @@ func (l *Ledger) Reserve(ctx context.Context, estimate int64) (cost.Reservation,
 	}
 
 	if l.client == nil {
-		return nil, fmt.Errorf("redis: nil client")
+		return nil, errors.New("redis: nil client")
 	}
 
 	if estimate < 0 || estimate > math.MaxInt64/2 {
@@ -189,15 +190,12 @@ func (l *Ledger) Reserve(ctx context.Context, estimate int64) (cost.Reservation,
 	}
 
 	id := fmt.Sprintf("%d-%x", time.Now().UnixNano(), binary.LittleEndian.Uint64(raw[:]))
-	ttlSeconds := int64(l.ttl / time.Second)
-	if ttlSeconds < 1 {
-		ttlSeconds = 1
-	}
+	ttlSeconds := max(int64(l.ttl/time.Second), 1)
 
 	err := reserveScript.Run(ctx, l.client, l.keys, l.limit, estimate, id, ttlSeconds).Err()
 	if err != nil {
 		if redisclient.HasErrorPrefix(err, "BUDGET_EXCEEDED") {
-			return nil, fmt.Errorf("%w: %v", cost.ErrBudgetExceeded, err)
+			return nil, fmt.Errorf("%w: %w", cost.ErrBudgetExceeded, err)
 		}
 
 		return nil, fmt.Errorf("redis: reserve: %w", err)
@@ -230,7 +228,7 @@ func (l *Ledger) Record(ctx context.Context, event cost.Event) error {
 	}
 
 	if event.Currency != l.currency {
-		return fmt.Errorf("redis: currency mismatch")
+		return errors.New("redis: currency mismatch")
 	}
 
 	key := fmt.Sprintf("%s:spent:%s:%s", l.prefix, event.Domain, event.Operation)
@@ -267,7 +265,7 @@ func (r *reservation) Commit(ctx context.Context, actual int64) error {
 
 	if err := terminalScript.Run(ctx, r.ledger.client, r.ledger.keys, r.id, actual).Err(); err != nil {
 		if redisclient.HasErrorPrefix(err, "RESERVATION_NOT_FOUND") {
-			return fmt.Errorf("%w: %v", cost.ErrReservationNotFound, err)
+			return fmt.Errorf("%w: %w", cost.ErrReservationNotFound, err)
 		}
 
 		return fmt.Errorf("redis: commit: %w", err)
@@ -296,7 +294,7 @@ func (r *reservation) Release(ctx context.Context) error {
 
 	if err := releaseScript.Run(ctx, r.ledger.client, r.ledger.keys, r.id).Err(); err != nil {
 		if redisclient.HasErrorPrefix(err, "RESERVATION_NOT_FOUND") {
-			return fmt.Errorf("%w: %v", cost.ErrReservationNotFound, err)
+			return fmt.Errorf("%w: %w", cost.ErrReservationNotFound, err)
 		}
 
 		return fmt.Errorf("redis: release: %w", err)

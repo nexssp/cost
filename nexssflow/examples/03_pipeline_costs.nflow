@@ -1,5 +1,5 @@
 @description "Three pipelines, per-pipeline cost buckets, aggregate report"
-@require github.com/nexssp/cost/nexssflow { budget: "5000000", currency: "USD" }
+@require github.com/nexssp/cost { budget: "5000000", currency: "USD" }
 
 @pipeline cheap_scan
   runtime.noop

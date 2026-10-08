@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ func TestLedgerContract(t *testing.T) {
 	client := redisclient.NewClient(&redisclient.Options{Addr: s.Addr()})
 	defer client.Close()
 
-	testkit.RunContract(t, func(t *testing.T) cost.Reserver {
+	testkit.RunContract(t, func(_ *testing.T) cost.Reserver {
 		return redisadapter.New(redisadapter.Config{
 			Client:      client,
 			Prefix:      "{test}:contract",
@@ -90,7 +91,7 @@ func TestLedgerExpirationReclamation(t *testing.T) {
 	}
 
 	// 2. Budżet jest pełny - kolejna próba musi zostać odrzucona
-	if _, err := ledger.Reserve(context.Background(), 1); err == nil {
+	if _, reserveErr := ledger.Reserve(context.Background(), 1); reserveErr == nil {
 		t.Fatal("expected rejection on exhausted budget")
 	}
 
@@ -146,7 +147,7 @@ func TestLedgerLazyReclamationBatching(t *testing.T) {
 
 	// Weryfikujemy ile WYGASŁYCH wpisów (score <= now) pozostało w sorted secie.
 	// Z 250 wygasłych usunięto dokładnie 100, więc musi pozostać dokładnie 150 wygasłych.
-	expiredRemaining, err := client.ZCount(context.Background(), prefix+":expiry", "-inf", fmt.Sprint(now)).Result()
+	expiredRemaining, err := client.ZCount(context.Background(), prefix+":expiry", "-inf", strconv.FormatInt(now, 10)).Result()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,17 +172,15 @@ func TestLedgerConcurrentHighContention(t *testing.T) {
 	var mu sync.Mutex
 	reservations := make([]cost.Reservation, 0, 100)
 
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 100 {
+		wg.Go(func() {
 			r, err := ledger.Reserve(context.Background(), 500)
 			if err == nil {
 				mu.Lock()
 				reservations = append(reservations, r)
 				mu.Unlock()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 

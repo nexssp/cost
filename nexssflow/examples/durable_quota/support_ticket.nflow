@@ -1,0 +1,47 @@
+@description "Prepaid tenant/user wallet: reserve before a paid support action"
+@require ../../../ {
+  backend: "postgres",
+  dsn: "$COST_POSTGRES_DSN",
+  schema_mode: "external",
+  accounting_mode: "wallet",
+  currency: "USD",
+  tenant_field: "tenant_id",
+  user_field: "user_id",
+  wallet_field: "wallet_id",
+  reservation_ttl: "10m",
+  max_open_conns: "10",
+  max_idle_conns: "5"
+}
+
+@pipeline draft_reply
+  # Replace this deterministic stand-in with the application's paid provider action.
+  # The outer :cost_estimate modifier holds wallet funds before this step.
+  with @{
+    route: "ai_draft",
+    draft: "Thanks for reporting this. We are investigating the issue now.",
+  }
+@end
+
+@pipeline human_review
+  with @{
+    route: "human_review",
+    review_reason: "wallet_insufficient_funds",
+  }
+@end
+
+# Flow's CLI merges a JSON object from stdin into the initial input. Select the
+# trusted identity and ticket fields explicitly; a service must derive wallet
+# identity from authenticated server-side context rather than client JSON.
+{
+  tenant_id: .tenant_id,
+  user_id: .user_id,
+  wallet_id: .wallet_id,
+  ticket_id: .ticket_id,
+  subject: .subject,
+  message: .message,
+}
+-> pipeline.draft_reply:cost_estimate=200000
+-> match(.quota_reserved) {
+  true  -> noop,
+  false -> pipeline.human_review,
+}
