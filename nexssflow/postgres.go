@@ -16,7 +16,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // Register pgx as the database/sql driver.
 	"github.com/nexssp/cost"
 	postgres "github.com/nexssp/cost/adapters/postgres"
-	"github.com/nexssp/flow/core"
+	"github.com/nexssp/flow/compiler"
 	"github.com/nexssp/kernel/action"
 )
 
@@ -158,7 +158,7 @@ func validatePostgresAccountingSettings(cfg Config, settings postgresSettings) e
 	return nil
 }
 
-func postgresBundle(store *postgresStore) core.Bundle {
+func postgresBundle(store *postgresStore) compiler.Bundle {
 	modifier := costEstimateModifierWithApply(func(builder *action.Builder[any, any], estimate int64) {
 		name := ""
 		if meta := builder.Describe(); meta != nil {
@@ -166,11 +166,11 @@ func postgresBundle(store *postgresStore) core.Bundle {
 		}
 		builder.UseFirst(store.quotaMiddleware(estimate, name))
 	})
-	return core.Bundle{
+	return compiler.Bundle{
 		ID:              ID,
-		Modifiers:       []core.Modifier{modifier},
+		Modifiers:       []compiler.Modifier{modifier},
 		AcceptedOptions: acceptedOptions,
-		Shutdowns: []core.ShutdownFunc{func(context.Context) error {
+		Shutdowns: []compiler.ShutdownFunc{func(context.Context) error {
 			return store.db.Close()
 		}},
 	}

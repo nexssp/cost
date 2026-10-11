@@ -4,11 +4,11 @@ import (
 	"testing"
 
 	"github.com/nexssp/cost/nexssflow"
-	"github.com/nexssp/flow/core"
+	"github.com/nexssp/flow/compiler"
 )
 
 func TestBundle_Contract(t *testing.T) {
-	if _, ok := core.Lookup(nexssflow.ID); !ok {
+	if _, ok := compiler.Lookup(nexssflow.ID); !ok {
 		t.Fatalf("init() did not register bundle under %q", nexssflow.ID)
 	}
 
@@ -26,7 +26,7 @@ func TestBundle_Contract(t *testing.T) {
 	if bundle.Modifiers[0].Name != "cost_estimate" {
 		t.Fatalf("Modifiers[0].Name = %q, want cost_estimate", bundle.Modifiers[0].Name)
 	}
-	if bundle.Modifiers[0].ValueKind != core.ModifierKindInt64 {
+	if bundle.Modifiers[0].ValueKind != compiler.ModifierKindInt64 {
 		t.Fatalf("Modifiers[0].ValueKind = %v, want ModifierKindInt64", bundle.Modifiers[0].ValueKind)
 	}
 	if bundle.AtomAdvise != nil {

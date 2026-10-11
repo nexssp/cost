@@ -1,14 +1,14 @@
 module github.com/nexssp/cost/examples
 
-go 1.26.0
+go 1.26.9
 
 require (
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/nexssp/cost v0.1.3
-	github.com/nexssp/cost/adapters/kernel v0.1.3
-	github.com/nexssp/cost/adapters/postgres v0.1.3
+	github.com/nexssp/cost v0.3.0
+	github.com/nexssp/cost/adapters/kernel v0.2.1
+	github.com/nexssp/cost/adapters/postgres v0.2.0
 	github.com/nexssp/cost/adapters/redis v0.1.2
-	github.com/nexssp/kernel v0.11.2
+	github.com/nexssp/kernel v0.31.1
 	github.com/redis/go-redis/v9 v9.22.0
 )
 

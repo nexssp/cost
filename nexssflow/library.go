@@ -1,6 +1,19 @@
-// Package nexssflow adapts Nexss Cost to Nexss Flow. The bundle configures its
-// storage backend through @require and registers :cost_estimate as a Flow
-// modifier that reserves before execution and settles afterward.
+// Package nexssflow wires github.com/nexssp/cost into Nexss Flow.
+//
+// Two entry points, one per owner:
+//
+//	Bundle(opts)        Flow owns the ledger. Used by @require. The ledger
+//	                    is constructed from the options block and lives for
+//	                    the compiled program's lifetime. Dispatches to the
+//	                    memory or postgres backend based on opts["backend"].
+//
+//	NewBundle(ledger)   The Go host owns the ledger. Used by applications
+//	                    that already hold a *cost.Ledger and want Flow to
+//	                    share it. Cannot be reached via @require, because
+//	                    a live ledger is not expressible in map[string]string.
+//
+// Both are registered under the same ID, "cost". Flow's compiler picks up
+// the registration from init(); no manual wiring is needed.
 package nexssflow
 
 import (
@@ -12,50 +25,52 @@ import (
 
 	"github.com/nexssp/cost"
 	kernelcost "github.com/nexssp/cost/adapters/kernel"
-	"github.com/nexssp/flow/core"
+	"github.com/nexssp/flow/compiler"
 	"github.com/nexssp/kernel/action"
 )
 
 const ID = "cost"
 
-func init() {
-	core.Register(ID, Bundle)
-}
-
-// Config controls the cost adapter. Budget and estimates are integer
-// micro-units: one unit of the currency equals 1,000,000 micros. Backend
-// defaults to the bounded in-memory ledger; PostgreSQL requires a DSN and
-// supports fixed tenant/month quotas or provisioned tenant/user wallets.
+// Config is the @require options block. Every field maps to one key.
 type Config struct {
-	Backend        string `flow:"backend" default:"memory"`
-	Budget         int64  `flow:"budget" default:"-1"`
-	Currency       string `flow:"currency" default:"USD"`
-	DSN            string `flow:"dsn"`
-	SchemaMode     string `flow:"schema_mode" default:"external"`
-	AccountingMode string `flow:"accounting_mode" default:"monthly"`
-	ScopePrefix    string `flow:"scope_prefix" default:"support-quota"`
-	TenantField    string `flow:"tenant_field" default:"customer_id"`
-	UserField      string `flow:"user_field" default:"user_id"`
-	WalletField    string `flow:"wallet_field" default:"wallet_id"`
-	ReservationTTL string `flow:"reservation_ttl" default:"5m"`
-	MaxOpenConns   int    `flow:"max_open_conns" default:"10"`
-	MaxIdleConns   int    `flow:"max_idle_conns" default:"5"`
+	Backend        string `nflow:"backend" default:"memory"`
+	Budget         int64  `nflow:"budget" default:"-1"`
+	Currency       string `nflow:"currency" default:"USD"`
+	DSN            string `nflow:"dsn"`
+	SchemaMode     string `nflow:"schema_mode" default:"external"`
+	AccountingMode string `nflow:"accounting_mode" default:"monthly"`
+	ScopePrefix    string `nflow:"scope_prefix" default:"support-quota"`
+	TenantField    string `nflow:"tenant_field" default:"customer_id"`
+	UserField      string `nflow:"user_field" default:"user_id"`
+	WalletField    string `nflow:"wallet_field" default:"wallet_id"`
+	ReservationTTL string `nflow:"reservation_ttl" default:"5m"`
+	MaxOpenConns   int    `nflow:"max_open_conns" default:"10"`
+	MaxIdleConns   int    `nflow:"max_idle_conns" default:"5"`
 }
 
 var acceptedOptions = []string{
-	"backend", "budget", "currency", "dsn", "schema_mode", "accounting_mode", "scope_prefix",
-	"tenant_field", "user_field", "wallet_field", "reservation_ttl", "max_open_conns", "max_idle_conns",
+	"backend", "budget", "currency", "dsn", "schema_mode", "accounting_mode",
+	"scope_prefix", "tenant_field", "user_field", "wallet_field",
+	"reservation_ttl", "max_open_conns", "max_idle_conns",
 }
 
 var postgresOnlyOptions = []string{
-	"dsn", "schema_mode", "accounting_mode", "scope_prefix", "tenant_field", "user_field",
-	"wallet_field", "reservation_ttl", "max_open_conns", "max_idle_conns",
+	"dsn", "schema_mode", "accounting_mode", "scope_prefix",
+	"tenant_field", "user_field", "wallet_field", "reservation_ttl",
+	"max_open_conns", "max_idle_conns",
 }
 
-// Bundle is the standard Flow bundle contract. Every backend choice and
-// setting is supplied by the importing .nflow file's @require options.
-func Bundle(opts map[string]string) core.Bundle {
-	cfg, err := core.Decode[Config](opts)
+func init() {
+	compiler.Register(ID, Bundle)
+}
+
+// Bundle is the factory Flow calls for
+// `@require github.com/nexssp/cost/nexssflow { ... }`.
+//
+// It constructs the ledger from the options block and returns a bundle
+// whose actions and modifiers are backed by that ledger.
+func Bundle(opts map[string]string) compiler.Bundle {
+	cfg, err := compiler.Decode[Config](opts)
 	if err != nil {
 		panic("cost: " + err.Error())
 	}
@@ -68,13 +83,13 @@ func Bundle(opts map[string]string) core.Bundle {
 				panic(fmt.Sprintf("cost: option %q requires backend=postgres", key))
 			}
 		}
-		bundle := NewBundle(cost.NewLedger(cfg.Budget, currency))
-		bundle.AcceptedOptions = acceptedOptions
-		return bundle
+		return NewBundle(cost.NewLedger(cfg.Budget, currency))
+
 	case "postgres":
 		if strings.EqualFold(strings.TrimSpace(cfg.AccountingMode), accountingModeWallet) {
 			if _, ok := opts["budget"]; ok {
-				panic("cost: budget is not accepted with accounting_mode=wallet; provision wallet balances in PostgreSQL")
+				panic("cost: budget is not accepted with accounting_mode=wallet; " +
+					"provision wallet balances in PostgreSQL")
 			}
 		}
 		store, err := newPostgresStore(cfg, currency)
@@ -82,54 +97,36 @@ func Bundle(opts map[string]string) core.Bundle {
 			panic("cost: " + err.Error())
 		}
 		return postgresBundle(store)
+
 	default:
 		panic(fmt.Sprintf("cost: unsupported backend %q (want memory or postgres)", cfg.Backend))
 	}
 }
 
-// NewBundle mounts a host-owned local ledger into Flow. It is useful when a
-// host needs direct access to local ledger counters or audit entries.
-func NewBundle(ledger *cost.Ledger) core.Bundle {
+// NewBundle wraps a caller-owned *cost.Ledger in a Flow bundle.
+//
+// Reach for this only when a Go host already owns a ledger and wants the
+// compiled Flow program to share it. For everything reachable from a
+// .nflow file, use Bundle(opts) via @require instead — the ledger is
+// then constructed and owned by the bundle.
+func NewBundle(ledger *cost.Ledger) compiler.Bundle {
 	if ledger == nil {
 		panic("cost: nil ledger")
 	}
-	return core.Bundle{
+	return compiler.Bundle{
 		ID: ID,
 		Libraries: []action.Library{{Name: ID, Actions: []action.AnyAction{
 			snapshotAction(ledger),
 			reportAction(ledger),
 			recordAction(ledger),
 		}}},
-		Modifiers: []core.Modifier{costEstimateModifier(ledger)},
+		Modifiers:       []compiler.Modifier{costEstimateModifier(ledger)},
+		AcceptedOptions: acceptedOptions,
 	}
 }
 
-func costEstimateModifier(ledger cost.Reserver) core.Modifier {
-	return costEstimateModifierWithApply(func(b *action.Builder[any, any], estimate int64) {
-		b.AnyHook(kernelcost.GuardAction(ledger, estimate))
-	})
-}
+// ── snapshot / record ────────────────────────────────────────────────
 
-func costEstimateModifierWithApply(apply func(*action.Builder[any, any], int64)) core.Modifier {
-	return core.Modifier{
-		Name:      "cost_estimate",
-		Owner:     core.OwnerBundle,
-		ValueKind: core.ModifierKindInt64,
-		Apply: func(b *action.Builder[any, any], raw string) error {
-			estimate, err := strconv.ParseInt(raw, 10, 64)
-			if err != nil {
-				return fmt.Errorf("parse int64: %w", err)
-			}
-			if estimate < 0 {
-				return errors.New("estimate must be non-negative")
-			}
-			apply(b, estimate)
-			return nil
-		},
-	}
-}
-
-// Snapshot is the shape returned by cost.snapshot in memory mode.
 type Snapshot struct {
 	LimitMicros     int64  `json:"limit_micros"`
 	RemainingMicros int64  `json:"remaining_micros"`
@@ -138,8 +135,6 @@ type Snapshot struct {
 	Currency        string `json:"currency"`
 }
 
-// RecordResult is returned by cost.record after Ledger.Record accepts an event.
-// Recording is audit-only and does not change ledger usage or spent counters.
 type RecordResult struct {
 	Recorded bool `json:"recorded"`
 }
@@ -169,6 +164,35 @@ func recordAction(ledger *cost.Ledger) action.AnyAction {
 		return RecordResult{Recorded: true}, nil
 	}).Description("Append a post-hoc cost event to the local audit ring").Build()
 }
+
+// ── :cost_estimate modifier ──────────────────────────────────────────
+
+func costEstimateModifier(ledger cost.Reserver) compiler.Modifier {
+	return costEstimateModifierWithApply(func(b *action.Builder[any, any], estimate int64) {
+		b.AnyHook(kernelcost.GuardAction(ledger, estimate))
+	})
+}
+
+func costEstimateModifierWithApply(apply func(*action.Builder[any, any], int64)) compiler.Modifier {
+	return compiler.Modifier{
+		Name:      "cost_estimate",
+		Owner:     compiler.OwnerBundle,
+		ValueKind: compiler.ModifierKindInt64,
+		Apply: func(b *action.Builder[any, any], raw string) error {
+			estimate, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil {
+				return fmt.Errorf("parse int64: %w", err)
+			}
+			if estimate < 0 {
+				return errors.New("estimate must be non-negative")
+			}
+			apply(b, estimate)
+			return nil
+		},
+	}
+}
+
+// ── helpers ──────────────────────────────────────────────────────────
 
 func parseCurrency(code string) cost.Currency {
 	var currency cost.Currency

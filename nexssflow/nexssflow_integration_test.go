@@ -8,8 +8,7 @@ import (
 
 	"github.com/nexssp/cost"
 	"github.com/nexssp/cost/nexssflow"
-	"github.com/nexssp/flow/core"
-	"github.com/nexssp/flow/extensions/modifiers_core"
+	"github.com/nexssp/flow/compiler"
 	"github.com/nexssp/flow/extensions/modifiers_meta"
 	"github.com/nexssp/flow/extensions/pipeline"
 	"github.com/nexssp/flow/extensions/projection"
@@ -20,13 +19,12 @@ import (
 	"github.com/nexssp/kernel/action"
 )
 
-func costRunnerConfig(t *testing.T, ledger *cost.Ledger, extra ...core.Bundle) runner.Config {
+func costRunnerConfig(t *testing.T, ledger *cost.Ledger, extra ...compiler.Bundle) runner.Config {
 	t.Helper()
-	bundles := []core.Bundle{
+	bundles := []compiler.Bundle{
 		syntax.Bundle(nil),
 		runtime.Bundle(nil),
 		projection.Bundle(nil),
-		modifiers_core.Bundle(nil),
 		modifiers_meta.Bundle(nil),
 		pipeline.Bundle(nil),
 		scope.Bundle(nil),
@@ -90,7 +88,7 @@ func TestFlowAdapter_ReleaseOnCancellation(t *testing.T) {
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}).Build()
-	extra := core.Bundle{
+	extra := compiler.Bundle{
 		ID:        "test-cancellation",
 		Libraries: []action.Library{{Name: "test", Actions: []action.AnyAction{waitForCancel}}},
 	}
