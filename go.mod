@@ -4,8 +4,8 @@ go 1.26.9
 
 require (
 	github.com/nexssp/cost/adapters/kernel v0.2.1
-	github.com/nexssp/flow v0.23.0
-	github.com/nexssp/kernel v0.31.1
+	github.com/nexssp/flow v0.29.0
+	github.com/nexssp/kernel v0.32.0
 )
 
 require (
@@ -23,7 +23,7 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/nexssp/cost/adapters/postgres v0.2.0
-	github.com/nexssp/validation v0.2.5 // indirect
+	github.com/nexssp/validation v0.3.0 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
