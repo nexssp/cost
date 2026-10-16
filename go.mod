@@ -4,8 +4,8 @@ go 1.26.9
 
 require (
 	github.com/nexssp/cost/adapters/kernel v0.2.1
-	github.com/nexssp/flow v0.29.0
-	github.com/nexssp/kernel v0.32.0
+	github.com/nexssp/flow v0.34.0
+	github.com/nexssp/kernel v0.35.0
 )
 
 require (
