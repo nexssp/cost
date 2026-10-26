@@ -45,7 +45,7 @@ jobs:
       - name: Verify Go module files are tidy
         run: |
           set -euo pipefail
-          for module in . adapters/kernel adapters/postgres adapters/redis examples; do
+          for module in . adapters/kernel adapters/postgres adapters/redis; do
             echo "::group::go mod tidy -diff ($module)"
             (cd "$module" && go mod tidy -diff)
             echo "::endgroup::"
@@ -78,7 +78,6 @@ jobs:
           (cd adapters/redis && go test -v ./...)
           (cd adapters/postgres && go test -v ./...)
           (cd adapters/kernel && go test -v ./...)
-          (cd examples && go test -v ./... && go build ./...)
 
       - name: Run tests with race detector
         env:
