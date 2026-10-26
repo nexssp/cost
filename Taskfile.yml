@@ -44,11 +44,6 @@ tasks:
 
   setup: { desc: "[setup:files, tools]", deps: [setup:files, tools] }
 
-  examples:
-    desc: Check building all examples
-    cmds:
-      - go build ./examples/...
-
   setup:files:
     desc: "Fetch missing repo templates (LICENSE, .gitignore, configs...)"
     cmds:
