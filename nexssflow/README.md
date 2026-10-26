@@ -1,6 +1,6 @@
 # Cost adapter for Nexss Flow
 
-`github.com/nexssp/cost/nexssflow` is an optional Flow adapter. It registers `:cost_estimate=N` as a Flow modifier and configures storage through the `.nflow` file's `@require` options. The default backend is the local in-process ledger; PostgreSQL supports durable fixed monthly quotas and provisioned tenant/user prepaid wallets.
+`github.com/nexssp/cost/nexssflow` is an optional Flow adapter. It registers `:cost_estimate=N` as a Flow modifier; `N` may be a fixed integer or a validated path into the action's runtime input. The default backend is the local in-process ledger; PostgreSQL supports durable fixed monthly quotas and provisioned tenant/user prepaid wallets.
 
 The modifier reserves the estimate before its target runs, then commits the reported cost when the target result implements `cost.Reporter` or commits the estimate otherwise. On action failure, cancellation, or panic, it releases the reservation. In PostgreSQL mode, insufficient monthly quota or wallet funds becomes a branchable denial result; database, identity, suspended-account, and settlement failures remain errors.
 
@@ -10,8 +10,8 @@ All options are recognized by the bundle factory. Budget and estimates are integ
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `backend` | `memory` | `memory` or `postgres` |
-| `budget` | `-1` | Maximum usage in micros. Memory accepts `-1` as unlimited; PostgreSQL monthly mode requires a non-negative limit. Wallet mode uses provisioned database balances instead. |
+| `backend` | `memory` | `memory`, `postgres`, or `storage` |
+| `budget` | `-1` | Maximum usage in micros. Memory accepts `-1` as unlimited; PostgreSQL monthly mode requires a non-negative limit. Wallet mode uses provisioned database balances. Storage mode rejects this option because each tenant's limit is read from Storage for every request. |
 | `currency` | `USD` | Three uppercase currency letters |
 | `dsn` | unset | PostgreSQL DSN; environment references such as `$COST_POSTGRES_DSN` are expanded by the adapter |
 | `schema_mode` | `external` | `external` uses a pre-provisioned schema; `auto` calls the PostgreSQL adapter's idempotent schema initializer |
@@ -23,6 +23,8 @@ All options are recognized by the bundle factory. Budget and estimates are integ
 | `reservation_ttl` | `5m` | PostgreSQL reservation lease lifetime; must be at least one second |
 | `max_open_conns` | `10` | PostgreSQL connection-pool upper bound |
 | `max_idle_conns` | `5` | PostgreSQL idle connection-pool bound, capped at `max_open_conns` |
+| `storage_path` | unset | Storage mode: path to the pre-migrated SQLite Storage database; environment references such as `$COST_STORAGE_PATH` are expanded |
+| `storage_namespace` | `cost-runtime-v1` | Storage mode: namespace in the existing Storage KV table |
 
 In `.nflow` `@require` blocks, write environment references as `$NAME` (for example, `$COST_POSTGRES_DSN`), not `${NAME}`: Flow currently treats a `}` inside a quoted option value as the end of the options block.
 
@@ -76,6 +78,16 @@ Each reserve/settle/release operation locks the wallet row and updates the held 
 
 The wallet database enforces that its own balance cannot be overdrawn. It does not make third-party provider spend reversible: when provider-reported actual cost exceeds the reservation and the remaining balance cannot cover the difference, settlement errors after the external action. Bound the provider's maximum spend (and make provider/application retries idempotent) when a strict end-to-end ceiling is required. As in monthly mode, expiration is lazy on the next reservation for that wallet; provision a TTL above the longest protected-action duration.
 
+## Runtime tenant budgets in Storage
+
+Use `backend: "storage"` when the limit must change without redeploying the Flow. Configure only the pre-migrated SQLite `storage_path` and existing KV `storage_namespace`; do not set `budget` in `@require`. The adapter reads the current tenant policy on every reservation and stores the policy, committed usage, and active reservations in one namespaced record in Storage's existing KV table. It adds no Cost-owned SQL table. Seed or change a limit from trusted Go setup/admin code with `nexssflow.SetRuntimeBudget(ctx, kv, tenantID, limitMicros)`; never expose this helper to a Flow request.
+
+The host must attach the authenticated tenant to context with `xctx.WithTenantID` after authentication. Cost ignores tenant IDs in Flow input. Missing or malformed policy fails closed as a Flow error before the protected action runs. Exhausted budget returns `quota_reserved: false` and `quota_state: "runtime_budget_exceeded"`; the protected action is skipped. Successful object results are marked `quota_reserved: true` and `quota_state: "runtime_reserved"`.
+
+Each policy stores `budget_micros` as a non-negative decimal string so SQLite/JSON does not round large integers. `SetRuntimeBudget` updates that field atomically without clearing committed usage or in-flight reservations. After a reduction, new work is denied whenever committed plus reserved usage would exceed the new limit; reservations already admitted are allowed to finish and settle, so an in-flight request can leave usage above the reduced cap. The adapter does not expire in-flight reservations automatically; after a process crash, an operator must reconcile stale holds before that tenant can spend the held amount again.
+
+As in PostgreSQL mode, the estimate is the admission gate. If an action's reported actual cost is greater than the estimate, committed usage can exceed the limit and subsequent requests will be denied; use a conservative estimate. This backend does not provide `cost.snapshot` or `cost.report`; usage lives in the Storage record and should be exposed through an authorized reporting path.
+
 ## Local memory backend and DSL
 
 The memory backend remains the default and can be configured as follows:
@@ -84,7 +96,25 @@ The memory backend remains the default and can be configured as follows:
 @require github.com/nexssp/cost/nexssflow { budget: "1000000", currency: "USD" }
 ```
 
-`:cost_estimate=N` reserves `N` micros before the modified action. A successful result implementing `cost.Reporter` supplies the actual cost; otherwise the estimate is committed. The modifier is registered in Flow's `ModifierTable`, not through `AtomAdvise`, and is supported on pipeline actions and projections in Flow v0.20.3.
+`:cost_estimate=N` reserves `N` micros before the modified action. A successful result implementing `cost.Reporter` supplies the actual cost; otherwise the estimate is committed. For a request-dependent amount, pass a path such as `:cost_estimate=.policy.estimate_micros`. The path is compiled once, but its value is looked up and validated for every invocation. Paths only traverse object fields (no arbitrary expressions or code evaluation). The value must be a non-negative integer number of micros; a missing, fractional, string, or invalid value fails closed before the protected action runs.
+
+This works with the existing Storage KV Flow bundle: a storage lookup can produce a record whose `value` contains `estimate_micros`, and the Cost modifier can read `.value.estimate_micros` from the input it receives. Configure that KV alias with a persistent backend such as `sqlite` or `postgres` when the policy must survive restarts. Storage remains the source of the value; Cost does not duplicate its schema or cache policy data at compile time. Pass `request: .` to `kv.get` to carry the original business payload through the lookup in the result's `request` field; without it, the existing KV result shape is unchanged.
+
+```nflow
+@storage kv:sqlite as policies {
+  path: "/var/lib/app/cost-policy.db",
+  namespace: "cost-policy-v1"
+}
+
+# The pre-provisioned row for the incoming model_key stores an integer
+# estimate_micros. SQLite migrations must be applied before serving traffic.
+policies.kv.get @{ key: .model_key, request: . }
+-> runtime.noop:cost_estimate=.value.estimate_micros
+```
+
+The lookup result contains `value`, `hit`, and the original input under `request`. A downstream business action can consume that nested request together with the policy record (or use a small projection to map both into its own request shape).
+
+The modifier is registered in Flow's `ModifierTable`, not through `AtomAdvise`, and is supported on pipeline actions and projections in Flow v0.20.3.
 
 In memory mode the adapter also provides:
 

@@ -40,7 +40,7 @@ func TestWalletMiddlewareRoutesInsufficientFundsWithoutRunningTarget(t *testing.
 	backend := &fakeReserver{reserveErr: cost.ErrBudgetExceeded}
 	store := testWalletStore(backend)
 	targetCalled := false
-	got, err := store.quotaMiddleware(200_000, "pipeline.draft_reply")(
+	got, err := store.quotaMiddleware(estimateSpec{literal: 200_000}, "pipeline.draft_reply")(
 		func(context.Context, any) (any, error) {
 			targetCalled = true
 			return map[string]any{"route": "ai_draft"}, nil
@@ -74,7 +74,7 @@ func TestWalletMiddlewareChargesEstimateAfterSuccess(t *testing.T) {
 		return backend, nil
 	}
 
-	got, err := store.quotaMiddleware(200_000, "pipeline.draft_reply")(
+	got, err := store.quotaMiddleware(estimateSpec{literal: 200_000}, "pipeline.draft_reply")(
 		func(context.Context, any) (any, error) {
 			return map[string]any{"route": "ai_draft"}, nil
 		},
@@ -106,7 +106,7 @@ func TestWalletMiddlewareChargesEstimateAfterSuccess(t *testing.T) {
 func TestWalletMiddlewareDoesNotTurnSettlementOverdrawIntoLowBalanceBranch(t *testing.T) {
 	backend := &fakeReserver{reservation: &fakeReservation{commitErr: cost.ErrBudgetExceeded}}
 	store := testWalletStore(backend)
-	got, err := store.quotaMiddleware(200_000, "pipeline.draft_reply")(
+	got, err := store.quotaMiddleware(estimateSpec{literal: 200_000}, "pipeline.draft_reply")(
 		func(context.Context, any) (any, error) { return map[string]any{"route": "ai_draft"}, nil },
 	)(context.Background(), walletRequest())
 	if got != nil {

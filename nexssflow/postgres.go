@@ -159,7 +159,7 @@ func validatePostgresAccountingSettings(cfg Config, settings postgresSettings) e
 }
 
 func postgresBundle(store *postgresStore) compiler.Bundle {
-	modifier := costEstimateModifierWithApply(func(builder *action.Builder[any, any], estimate int64) {
+	modifier := costEstimateModifierWithApply(func(builder *action.Builder[any, any], estimate estimateSpec) {
 		name := ""
 		if meta := builder.Describe(); meta != nil {
 			name = meta.Name
@@ -176,9 +176,13 @@ func postgresBundle(store *postgresStore) compiler.Bundle {
 	}
 }
 
-func (s *postgresStore) quotaMiddleware(estimate int64, actionName string) action.Middleware[any, any] {
+func (s *postgresStore) quotaMiddleware(estimateSpec estimateSpec, actionName string) action.Middleware[any, any] {
 	return func(next action.Fn[any, any]) action.Fn[any, any] {
 		return func(ctx context.Context, input any) (output any, resultErr error) {
+			estimate, err := estimateSpec.resolve(input)
+			if err != nil {
+				return nil, err
+			}
 			ledger, deniedState, err := s.ledgerForInput(ctx, input, actionName, time.Now().UTC())
 			if err != nil {
 				return nil, err

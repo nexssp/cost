@@ -89,7 +89,7 @@ func TestQuotaMiddlewareRoutesBudgetDenialWithoutRunningTarget(t *testing.T) {
 		return map[string]any{"route": "ai_draft"}, nil
 	}
 
-	got, err := store.quotaMiddleware(200_000, "pipeline.draft_reply")(next)(
+	got, err := store.quotaMiddleware(estimateSpec{literal: 200_000}, "pipeline.draft_reply")(next)(
 		context.Background(), map[string]any{"customer_id": "cus_42", "ticket_id": "ticket_42"},
 	)
 	if err != nil {
@@ -114,7 +114,7 @@ func TestQuotaMiddlewareDoesNotMaskInfrastructureErrors(t *testing.T) {
 	backend := &fakeReserver{reserveErr: errors.New("database unavailable")}
 	store := testPostgresStore(backend)
 	targetCalled := false
-	_, err := store.quotaMiddleware(200_000, "pipeline.draft_reply")(
+	_, err := store.quotaMiddleware(estimateSpec{literal: 200_000}, "pipeline.draft_reply")(
 		func(context.Context, any) (any, error) {
 			targetCalled = true
 			return map[string]any{}, nil
@@ -131,7 +131,7 @@ func TestQuotaMiddlewareDoesNotMaskInfrastructureErrors(t *testing.T) {
 func TestQuotaMiddlewareCommitsAndRecordsSuccessfulDraft(t *testing.T) {
 	backend := &fakeReserver{reservation: &fakeReservation{}}
 	store := testPostgresStore(backend)
-	got, err := store.quotaMiddleware(200_000, "pipeline.draft_reply")(
+	got, err := store.quotaMiddleware(estimateSpec{literal: 200_000}, "pipeline.draft_reply")(
 		func(_ context.Context, input any) (any, error) {
 			inputMap, ok := input.(map[string]any)
 			if !ok {
@@ -158,11 +158,36 @@ func TestQuotaMiddlewareCommitsAndRecordsSuccessfulDraft(t *testing.T) {
 	}
 }
 
+func TestQuotaMiddlewareResolvesEstimateFromEachRuntimeInput(t *testing.T) {
+	backend := &fakeReserver{reservation: &fakeReservation{}}
+	store := testPostgresStore(backend)
+	spec, err := parseEstimateSpec(".policy.estimate_micros")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, estimate := range []int64{1_500, 2_750} {
+		_, err := store.quotaMiddleware(spec, "pipeline.draft_reply")(
+			func(context.Context, any) (any, error) {
+				return map[string]any{"route": "ai_draft"}, nil
+			},
+		)(context.Background(), map[string]any{
+			"customer_id": "cus_42",
+			"policy":      map[string]any{"estimate_micros": estimate},
+		})
+		if err != nil {
+			t.Fatalf("execute request with estimate %d: %v", estimate, err)
+		}
+	}
+	if len(backend.estimates) != 2 || backend.estimates[0] != 1_500 || backend.estimates[1] != 2_750 {
+		t.Fatalf("reserved estimates = %v, want [1500 2750]", backend.estimates)
+	}
+}
+
 func TestQuotaMiddlewareReleasesWhenTargetFails(t *testing.T) {
 	backend := &fakeReserver{reservation: &fakeReservation{}}
 	store := testPostgresStore(backend)
 	wantErr := errors.New("draft failed")
-	_, err := store.quotaMiddleware(200_000, "pipeline.draft_reply")(
+	_, err := store.quotaMiddleware(estimateSpec{literal: 200_000}, "pipeline.draft_reply")(
 		func(context.Context, any) (any, error) { return nil, wantErr },
 	)(context.Background(), map[string]any{"customer_id": "cus_42"})
 	if !errors.Is(err, wantErr) {
@@ -247,9 +272,11 @@ type fakeReserver struct {
 	reserveErr  error
 	reservation *fakeReservation
 	events      []cost.Event
+	estimates   []int64
 }
 
-func (f *fakeReserver) Reserve(context.Context, int64) (cost.Reservation, error) {
+func (f *fakeReserver) Reserve(_ context.Context, estimate int64) (cost.Reservation, error) {
+	f.estimates = append(f.estimates, estimate)
 	if f.reserveErr != nil {
 		return nil, f.reserveErr
 	}

@@ -63,6 +63,77 @@ func TestFlowAdapter_ReserveCommitOnSuccess(t *testing.T) {
 	}
 }
 
+func TestFlowAdapter_ResolvesCostEstimateFromEachRuntimeRequest(t *testing.T) {
+	ledger := cost.NewLedger(10_000, cost.USD)
+	policyLookup := action.New("test.policy_lookup", func(_ context.Context, input map[string]any) (map[string]any, error) {
+		return map[string]any{
+			"value": map[string]any{"estimate_micros": input["configured_estimate"]},
+			"hit":   true,
+		}, nil
+	}).Build()
+	extra := compiler.Bundle{
+		ID:        "test-dynamic-estimate",
+		Libraries: []action.Library{{Name: "test", Actions: []action.AnyAction{policyLookup}}},
+	}
+	cfg := costRunnerConfig(t, ledger, extra)
+	source := `test.policy_lookup -> runtime.noop:cost_estimate=.value.estimate_micros -> cost.snapshot`
+
+	for _, estimate := range []int64{1_234, 3_333} {
+		execution, err := runner.Execute(context.Background(), cfg, source, "cost-dynamic-estimate.nflow", map[string]any{
+			"configured_estimate": estimate,
+		})
+		if err != nil {
+			t.Fatalf("execute request with estimate %d: %v", estimate, err)
+		}
+		snapshot, ok := execution.Output.(nexssflow.Snapshot)
+		if !ok {
+			t.Fatalf("output type = %T, want nexssflow.Snapshot", execution.Output)
+		}
+		if snapshot.UsedMicros != ledger.UsedMicros() {
+			t.Fatalf("snapshot used=%d, ledger used=%d", snapshot.UsedMicros, ledger.UsedMicros())
+		}
+	}
+	if got := ledger.UsedMicros(); got != 4_567 {
+		t.Fatalf("used micros = %d, want 4567 (sum of per-request runtime estimates)", got)
+	}
+	entries := ledger.Entries()
+	if len(entries) != 2 || entries[0].CostMicros != 1_234 || entries[1].CostMicros != 3_333 {
+		t.Fatalf("dynamic estimate events = %#v, want 1234 and 3333 micros", entries)
+	}
+}
+
+func TestFlowAdapter_RejectsInvalidRuntimeEstimateBeforeProtectedAction(t *testing.T) {
+	ledger := cost.NewLedger(10_000, cost.USD)
+	policyLookup := action.New("test.policy_lookup", func(_ context.Context, _ any) (map[string]any, error) {
+		return map[string]any{"value": map[string]any{"estimate_micros": "not-an-integer"}}, nil
+	}).Build()
+	protectedCalled := false
+	protected := action.New("test.protected", func(_ context.Context, input any) (any, error) {
+		protectedCalled = true
+		return input, nil
+	}).Build()
+	extra := compiler.Bundle{
+		ID: "test-invalid-dynamic-estimate",
+		Libraries: []action.Library{{Name: "test", Actions: []action.AnyAction{
+			policyLookup, protected,
+		}}},
+	}
+	cfg := costRunnerConfig(t, ledger, extra)
+	_, err := runner.Execute(context.Background(), cfg,
+		`test.policy_lookup -> test.protected:cost_estimate=.value.estimate_micros`,
+		"cost-invalid-dynamic-estimate.nflow", nil,
+	)
+	if err == nil {
+		t.Fatal("invalid runtime estimate unexpectedly succeeded")
+	}
+	if protectedCalled {
+		t.Fatal("protected action ran despite invalid runtime estimate")
+	}
+	if ledger.UsedMicros() != 0 || ledger.SpentMicros() != 0 || len(ledger.Entries()) != 0 {
+		t.Fatalf("invalid estimate changed ledger: used=%d spent=%d entries=%d", ledger.UsedMicros(), ledger.SpentMicros(), len(ledger.Entries()))
+	}
+}
+
 func TestFlowAdapter_ReleaseOnActionError(t *testing.T) {
 	ledger := cost.NewLedger(10_000, cost.USD)
 	cfg := costRunnerConfig(t, ledger)

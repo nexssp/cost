@@ -26,8 +26,8 @@ func TestBundle_Contract(t *testing.T) {
 	if bundle.Modifiers[0].Name != "cost_estimate" {
 		t.Fatalf("Modifiers[0].Name = %q, want cost_estimate", bundle.Modifiers[0].Name)
 	}
-	if bundle.Modifiers[0].ValueKind != compiler.ModifierKindInt64 {
-		t.Fatalf("Modifiers[0].ValueKind = %v, want ModifierKindInt64", bundle.Modifiers[0].ValueKind)
+	if bundle.Modifiers[0].ValueKind != compiler.ModifierKindAny {
+		t.Fatalf("Modifiers[0].ValueKind = %v, want ModifierKindAny", bundle.Modifiers[0].ValueKind)
 	}
 	if bundle.AtomAdvise != nil {
 		t.Fatal("AtomAdvise must be nil; cost_estimate is a registered modifier")
