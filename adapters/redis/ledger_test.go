@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	redisclient "github.com/redis/go-redis/v9"
+
 	"github.com/nexssp/cost"
 	redisadapter "github.com/nexssp/cost/adapters/redis"
 	"github.com/nexssp/cost/testkit"
-	redisclient "github.com/redis/go-redis/v9"
 )
 
 func TestLedgerContract(t *testing.T) {

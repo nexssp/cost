@@ -16,12 +16,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nexssp/cost"
 	"github.com/nexssp/flow/compiler"
 	"github.com/nexssp/kernel/action"
 	"github.com/nexssp/kernel/xctx"
 	"github.com/nexssp/storage"
 	"github.com/nexssp/storage/sqlite"
+
+	"github.com/nexssp/cost"
 )
 
 const runtimeQuotaKeyPrefix = "cost/runtime-budget/v1/"
@@ -267,7 +268,6 @@ type runtimeQuotaLedger struct {
 	tenantID string
 }
 
-//nolint:gocyclo // Validation and reservation must use one atomic policy snapshot.
 func (l *runtimeQuotaLedger) Reserve(ctx context.Context, estimate int64) (cost.Reservation, error) {
 	if ctx == nil {
 		return nil, cost.ErrNilContext

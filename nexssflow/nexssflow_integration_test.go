@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nexssp/cost"
-	"github.com/nexssp/cost/nexssflow"
 	"github.com/nexssp/flow/compiler"
 	"github.com/nexssp/flow/extensions/modifiers_meta"
 	"github.com/nexssp/flow/extensions/pipeline"
@@ -17,6 +15,9 @@ import (
 	"github.com/nexssp/flow/extensions/syntax"
 	"github.com/nexssp/flow/runner"
 	"github.com/nexssp/kernel/action"
+
+	"github.com/nexssp/cost"
+	"github.com/nexssp/cost/nexssflow"
 )
 
 func costRunnerConfig(t *testing.T, ledger *cost.Ledger, extra ...compiler.Bundle) runner.Config {

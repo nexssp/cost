@@ -27,11 +27,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-    strategy:
-      fail-fast: false
-      matrix:
-        go-version: ["1.26.x"]
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -52,9 +47,9 @@ jobs:
           done
 
       - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v9.3.0
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.13.2
+          version: latest
           install-only: true
 
       - name: Verify formatting

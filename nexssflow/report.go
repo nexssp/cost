@@ -3,8 +3,9 @@ package nexssflow
 import (
 	"context"
 
-	"github.com/nexssp/cost"
 	"github.com/nexssp/kernel/action"
+
+	"github.com/nexssp/cost"
 )
 
 // ReportBucket aggregates the audit ring by (Domain, Operation).

@@ -5,9 +5,10 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/nexssp/kernel/action"
+
 	"github.com/nexssp/cost"
 	kernelcost "github.com/nexssp/cost/adapters/kernel"
-	"github.com/nexssp/kernel/action"
 )
 
 type reportedResult struct {

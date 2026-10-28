@@ -10,8 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nexssp/cost"
 	redisclient "github.com/redis/go-redis/v9"
+
+	"github.com/nexssp/cost"
 )
 
 var reserveScript = redisclient.NewScript(`

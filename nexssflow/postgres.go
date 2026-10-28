@@ -14,10 +14,11 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // Register pgx as the database/sql driver.
-	"github.com/nexssp/cost"
-	postgres "github.com/nexssp/cost/adapters/postgres"
 	"github.com/nexssp/flow/compiler"
 	"github.com/nexssp/kernel/action"
+
+	"github.com/nexssp/cost"
+	postgres "github.com/nexssp/cost/adapters/postgres"
 )
 
 const (

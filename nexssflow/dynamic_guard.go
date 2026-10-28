@@ -4,8 +4,9 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/nexssp/cost"
 	"github.com/nexssp/kernel/action"
+
+	"github.com/nexssp/cost"
 )
 
 type dynamicReservationKey struct{}

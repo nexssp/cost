@@ -21,10 +21,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/nexssp/cost"
-	kernelcost "github.com/nexssp/cost/adapters/kernel"
 	"github.com/nexssp/flow/compiler"
 	"github.com/nexssp/kernel/action"
+
+	"github.com/nexssp/cost"
+	kernelcost "github.com/nexssp/cost/adapters/kernel"
 )
 
 const ID = "cost"

@@ -5,8 +5,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/nexssp/cost"
 	"github.com/nexssp/kernel/action"
+
+	"github.com/nexssp/cost"
 )
 
 type reservationKey struct{}

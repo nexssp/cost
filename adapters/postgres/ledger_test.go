@@ -10,6 +10,7 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+
 	"github.com/nexssp/cost"
 	postgresadapter "github.com/nexssp/cost/adapters/postgres"
 	"github.com/nexssp/cost/testkit"

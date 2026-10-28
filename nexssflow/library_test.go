@@ -3,8 +3,9 @@ package nexssflow_test
 import (
 	"testing"
 
-	"github.com/nexssp/cost/nexssflow"
 	"github.com/nexssp/flow/compiler"
+
+	"github.com/nexssp/cost/nexssflow"
 )
 
 func TestBundle_Contract(t *testing.T) {
