@@ -1,11 +1,11 @@
 module github.com/nexssp/cost/adapters/redis
 
-go 1.26.9
+go 1.27.3
 
 require (
-	github.com/alicebob/miniredis/v2 v2.39.0
+	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/nexssp/cost v0.2.0
-	github.com/redis/go-redis/v9 v9.22.0
+	github.com/redis/go-redis/v9 v9.23.0
 )
 
 require (
