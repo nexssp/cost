@@ -42,10 +42,10 @@ github.com/nexssp/cost/adapters/kernel v0.2.1 h1:NF9ap14Jmo/RPWwo8q3CQRgORTYIRN7
 github.com/nexssp/cost/adapters/kernel v0.2.1/go.mod h1:/9n7rQdMN1/F1Ihy3YguEU5ySdZoQpqCURyGRQ7qUXo=
 github.com/nexssp/cost/adapters/postgres v0.2.0 h1:QtJdkIJHaGgRf02EmtcbzEDlVOvjpC4U60eTZXPLd80=
 github.com/nexssp/cost/adapters/postgres v0.2.0/go.mod h1:XxHPZeAJsoY43u8z1rbQnij0DOI/sdKvtG4spN058XE=
-github.com/nexssp/flow v0.50.0 h1:scm6QiOptpnmkfaXX9oidm5jrmgrTtpG8TGrAq4YKrA=
-github.com/nexssp/flow v0.50.0/go.mod h1:dbL8Ie2eNVhbwjvnc8k4Vr52v0N0hgehDpWaVEe1AzM=
-github.com/nexssp/kernel v0.36.0 h1:a+oC0/h1RXUMeluils2iOgq3drVQRpQlzBBF9iUBiGk=
-github.com/nexssp/kernel v0.36.0/go.mod h1:7XZS0seoOhsKAg/CuYtV1pSvXIhV+rTWKQnd74AY8HY=
+github.com/nexssp/flow v0.70.0 h1:5h3AYSiPbegdpooxATBVlj6bkWX4iPalzOKr957in+4=
+github.com/nexssp/flow v0.70.0/go.mod h1:ePHaKO4FiG3fTgev3Xy4D8UnHp5aG1cWXcP4IF4lLZA=
+github.com/nexssp/kernel v0.37.0 h1:HTc/ArMNYPilMAxCbVXQStdmdboPVylwkojzzDvc7Ms=
+github.com/nexssp/kernel v0.37.0/go.mod h1:7XZS0seoOhsKAg/CuYtV1pSvXIhV+rTWKQnd74AY8HY=
 github.com/nexssp/storage v0.5.0 h1:y33ZdK2W2BL5kAnTWf1LZH+OIaCUvJyguvSEmO3B4ZY=
 github.com/nexssp/storage v0.5.0/go.mod h1:GXJ+gdTbc40Kdokt4whgafgXSSMgwtGvEJuxcXI12zY=
 github.com/nexssp/validation v0.3.0 h1:j9iLKqXqDIQfUijEGEEnhZYESj8GILIYqznSDKa0fxE=
