@@ -1,10 +1,10 @@
 module github.com/nexssp/cost/adapters/kernel
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/nexssp/cost v0.4.0
-	github.com/nexssp/kernel v0.37.0
+	github.com/nexssp/kernel v0.38.1
 )
 
 require (
