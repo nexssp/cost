@@ -6,8 +6,8 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/nexssp/cost/adapters/kernel v0.2.1
 	github.com/nexssp/cost/adapters/postgres v0.2.0
-	github.com/nexssp/flow v0.73.0
-	github.com/nexssp/kernel v0.38.1
+	github.com/nexssp/flow v0.80.0
+	github.com/nexssp/kernel v0.39.1
 	github.com/nexssp/storage v0.5.0
 )
 
