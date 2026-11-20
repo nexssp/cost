@@ -16,17 +16,11 @@
 @pipeline draft_reply
   # Replace this deterministic stand-in with the application's paid provider action.
   # The outer :cost_estimate modifier holds wallet funds before this step.
-  with @{
-    route: "ai_draft",
-    draft: "Thanks for reporting this. We are investigating the issue now.",
-  }
+  with(route: "ai_draft", draft: "Thanks for reporting this. We are investigating the issue now.")
 @end
 
 @pipeline human_review
-  with @{
-    route: "human_review",
-    review_reason: "wallet_insufficient_funds",
-  }
+  with(route: "human_review", review_reason: "wallet_insufficient_funds")
 @end
 
 # Flow's CLI merges a JSON object from stdin into the initial input. Select the

@@ -45,7 +45,7 @@ func TestFlowAdapter_ReserveCommitOnSuccess(t *testing.T) {
 
 	execution, err := runner.Execute(
 		context.Background(), cfg,
-		`runtime.const @{ value: "done" }:cost_estimate=1000 -> cost.snapshot`,
+		`"done":cost_estimate=1000 -> cost.snapshot`,
 		"cost-success.nflow", nil,
 	)
 	if err != nil {
@@ -59,8 +59,8 @@ func TestFlowAdapter_ReserveCommitOnSuccess(t *testing.T) {
 	if snapshot.UsedMicros != 1_000 || snapshot.SpentMicros != 1_000 || snapshot.RemainingMicros != 9_000 {
 		t.Fatalf("snapshot remaining=%d used=%d spent=%d, want 9000, 1000, 1000", snapshot.RemainingMicros, snapshot.UsedMicros, snapshot.SpentMicros)
 	}
-	if got := ledger.Entries(); len(got) != 1 || got[0].Operation != "const" || got[0].CostMicros != 1_000 {
-		t.Fatalf("ledger entries = %#v, want one runtime.const event for 1000 micros", got)
+	if got := ledger.Entries(); len(got) != 1 || got[0].Operation != "literal" || got[0].CostMicros != 1_000 {
+		t.Fatalf("ledger entries = %#v, want one 1000-micro literal event", got)
 	}
 }
 
@@ -141,7 +141,7 @@ func TestFlowAdapter_ReleaseOnActionError(t *testing.T) {
 
 	_, err := runner.Execute(
 		context.Background(), cfg,
-		`runtime.fail:cost_estimate=1000 @{ message: "expected failure" }`,
+		`fail:cost_estimate=1000(kind: "ExpectedFailure", message: "expected failure")`,
 		"cost-error.nflow", nil,
 	)
 	if err == nil {
@@ -204,7 +204,7 @@ func TestFlowAdapter_BudgetExceededIsCatchableWithFallback(t *testing.T) {
 
 	execution, err := runner.Execute(
 		context.Background(), cfg,
-		`runtime.noop:cost_estimate=1000 || runtime.const @{ value: "recovered" }`,
+		`runtime.noop:cost_estimate=1000 || "recovered"`,
 		"cost-fallback.nflow", nil,
 	)
 	if err != nil {
@@ -231,8 +231,8 @@ func TestFlowAdapter_ReportPreservesSequentialPipelineBucketOrder(t *testing.T) 
 @pipeline third
   runtime.noop
 @end
-runtime.const @{ value: "seed" }
--> pipeline.first:cost_estimate=1000
+	"seed"
+	-> pipeline.first:cost_estimate=1000
 -> pipeline.second:cost_estimate=2000
 -> pipeline.third:cost_estimate=3000
 -> cost.report
@@ -281,7 +281,7 @@ func TestFlowAdapter_UnlimitedSnapshotUsesNegativeOneRemainingSentinel(t *testin
 func TestFlowAdapter_RecordAddsAuditEventWithoutChangingCounters(t *testing.T) {
 	ledger := cost.NewLedger(10_000, cost.USD)
 	cfg := costRunnerConfig(t, ledger)
-	source := `cost.record @{ id: "resp_123", domain: "openai", operation: "responses", cost_micros: 1234, currency: "USD" } -> cost.report`
+	source := `cost.record(id: "resp_123", domain: "openai", operation: "responses", cost_micros: 1234, currency: "USD") -> cost.report`
 
 	execution, err := runner.Execute(context.Background(), cfg, source, "cost-record.nflow", nil)
 	if err != nil {

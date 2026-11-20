@@ -113,7 +113,7 @@ func protectedSupportAction(calls *atomic.Int32) compiler.Bundle {
 	}
 }
 
-const storageBudgetFlow = `support.draft_reply:cost_estimate=60 @{ ticket: .ticket }`
+const storageBudgetFlow = `support.draft_reply:cost_estimate=60(ticket: .ticket)`
 
 func TestStorageBudgetFlowReadsPolicyAgainOnNextRequestAndIgnoresClientTenant(t *testing.T) {
 	store := newStorageQuotaTestStore(t)

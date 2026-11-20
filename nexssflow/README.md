@@ -108,7 +108,7 @@ This works with the existing Storage KV Flow bundle: a storage lookup can produc
 
 # The pre-provisioned row for the incoming model_key stores an integer
 # estimate_micros. SQLite migrations must be applied before serving traffic.
-policies.kv.get @{ key: .model_key, request: . }
+policies.kv.get(key: .model_key, request: .)
 -> runtime.noop:cost_estimate=.value.estimate_micros
 ```
 
@@ -126,7 +126,7 @@ For example, the output after `cost.report` has report fields (including `spent_
 
 ```nflow
 @assert: result.spent_micros == 150000
-runtime.const @{ value: "completed" }:cost_estimate=150000
+"completed":cost_estimate=150000
 -> cost.report
 ```
 
