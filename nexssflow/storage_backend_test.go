@@ -54,36 +54,38 @@ func applyCostStorageMigration(t *testing.T, path string) {
 	if err != nil {
 		t.Fatalf("read embedded Storage migrations: %v", err)
 	}
-	if len(entries) != 1 || entries[0].Name() != "00001_create_storage_tables.sql" {
-		t.Fatalf("unexpected Storage migration files: %v", entries)
+	if len(entries) == 0 {
+		t.Fatal("no embedded Storage migrations found")
 	}
-	migration, err := fs.ReadFile(sqlite.Migrations(), entries[0].Name())
-	if err != nil {
-		t.Fatalf("read Storage migration: %v", err)
-	}
-	var up strings.Builder
-	inUp := false
-	for line := range strings.SplitSeq(string(migration), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "-- +goose Up") {
-			inUp = true
-			continue
+	for _, entry := range entries {
+		migration, err := fs.ReadFile(sqlite.Migrations(), entry.Name())
+		if err != nil {
+			t.Fatalf("read Storage migration %s: %v", entry.Name(), err)
 		}
-		if strings.HasPrefix(trimmed, "-- +goose ") {
-			inUp = false
-			continue
+		var up strings.Builder
+		inUp := false
+		for line := range strings.SplitSeq(string(migration), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "-- +goose Up") {
+				inUp = true
+				continue
+			}
+			if strings.HasPrefix(trimmed, "-- +goose ") {
+				inUp = false
+				continue
+			}
+			if inUp && !strings.HasPrefix(trimmed, "--") {
+				up.WriteString(line)
+				up.WriteByte('\n')
+			}
 		}
-		if inUp && !strings.HasPrefix(trimmed, "--") {
-			up.WriteString(line)
-			up.WriteByte('\n')
-		}
-	}
-	for statement := range strings.SplitSeq(up.String(), ";") {
-		if strings.TrimSpace(statement) == "" {
-			continue
-		}
-		if _, err := db.ExecContext(t.Context(), statement); err != nil {
-			t.Fatalf("apply embedded Storage migration: %v\nSQL: %s", err, statement)
+		for statement := range strings.SplitSeq(up.String(), ";") {
+			if strings.TrimSpace(statement) == "" {
+				continue
+			}
+			if _, err := db.ExecContext(t.Context(), statement); err != nil {
+				t.Fatalf("apply embedded Storage migration %s: %v\nSQL: %s", entry.Name(), err, statement)
+			}
 		}
 	}
 }
